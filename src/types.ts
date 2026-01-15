@@ -30,6 +30,7 @@ export type Message =
 interface BaseMessage {
   sourceRef: string;
   timestamp: string;
+  parentMessageRef?: string; // UUID of parent message (for tree reconstruction)
 }
 
 export interface UserMessage extends BaseMessage {

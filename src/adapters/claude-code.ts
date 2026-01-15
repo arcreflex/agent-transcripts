@@ -128,13 +128,7 @@ function splitConversations(records: ClaudeRecord[]): ClaudeRecord[][] {
       queue.push(...childUuids);
     }
 
-    // Sort by timestamp
-    conversation.sort((a, b) => {
-      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return ta - tb;
-    });
-
+    // Note: we don't sort here - renderer handles ordering via tree traversal
     if (conversation.length > 0) {
       conversations.push(conversation);
     }
@@ -218,6 +212,7 @@ function transformConversation(
   for (const rec of records) {
     const sourceRef = rec.uuid || "";
     const timestamp = rec.timestamp || new Date().toISOString();
+    const parentMessageRef = rec.parentUuid || undefined;
 
     if (rec.type === "user" && rec.message) {
       // Skip tool-result-only user messages (they're just tool responses)
@@ -229,6 +224,7 @@ function transformConversation(
           type: "user",
           sourceRef,
           timestamp,
+          parentMessageRef,
           content: text,
         });
       }
@@ -243,6 +239,7 @@ function transformConversation(
           type: "assistant",
           sourceRef,
           timestamp,
+          parentMessageRef,
           content: text,
           thinking,
         });
@@ -254,6 +251,7 @@ function transformConversation(
           type: "tool_calls",
           sourceRef,
           timestamp,
+          parentMessageRef,
           calls: toolCalls,
         });
       }
@@ -264,6 +262,7 @@ function transformConversation(
           type: "system",
           sourceRef,
           timestamp,
+          parentMessageRef,
           content: text,
         });
       }

@@ -35,6 +35,12 @@ const adapterOpt = option({
     "Source format adapter (auto-detected from path if not specified)",
 });
 
+const headOpt = option({
+  type: optional(string),
+  long: "head",
+  description: "Render branch ending at this message ID (default: latest)",
+});
+
 // Parse subcommand
 const parseCmd = command({
   name: "parse",
@@ -56,9 +62,10 @@ const renderCmd = command({
   args: {
     input: inputArg,
     output: outputOpt,
+    head: headOpt,
   },
-  async handler({ input, output }) {
-    await render({ input, output });
+  async handler({ input, output, head }) {
+    await render({ input, output, head });
   },
 });
 
@@ -70,15 +77,16 @@ const defaultCmd = command({
     input: inputArg,
     output: outputOpt,
     adapter: adapterOpt,
+    head: headOpt,
   },
-  async handler({ input, output, adapter }) {
+  async handler({ input, output, adapter, head }) {
     // Parse to JSON - parse() determines output paths and returns them
     const { outputPaths } = await parse({ input, output, adapter });
 
     // Render each transcript (JSON path → markdown path)
     for (const jsonPath of outputPaths) {
       const mdPath = jsonPath.replace(/\.json$/, ".md");
-      await render({ input: jsonPath, output: mdPath });
+      await render({ input: jsonPath, output: mdPath, head });
     }
   },
 });

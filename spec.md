@@ -39,6 +39,7 @@ agent-transcripts render [file]       # Intermediate JSON → markdown only
 
 - `-o, --output <path>` - Output file path (default: current working directory)
 - `--adapter <name>` - Explicitly specify source adapter (required for stdin if not auto-detectable)
+- `--head <id>` - Render branch ending at this message ID (default: latest leaf)
 
 ### Examples
 
@@ -92,6 +93,7 @@ type Message =
 interface BaseMessage {
   sourceRef: string; // UUID from source for provenance
   timestamp: string; // ISO 8601
+  parentMessageRef?: string; // Parent message UUID (for tree reconstruction)
 }
 
 interface UserMessage extends BaseMessage {
@@ -137,7 +139,14 @@ interface ErrorMessage extends BaseMessage {
 - **System messages/metadata**: Included inline with type markers
 - **Conversation boundaries**: Split into separate output files with indexed suffixes (e.g., `transcript_1.json`, `transcript_2.json`)
 
-> **TODO**: Branching conversations - Currently, if a conversation has multiple branches (same parent with multiple children), all branches are merged and sorted by timestamp. Should branches become separate transcripts instead? Needs discussion.
+### Branching Conversations
+
+When a conversation has multiple branches (same parent with multiple children), the structure is preserved via `parentMessageRef` fields. During rendering:
+
+- **Default**: Render the "primary" branch (path to the latest leaf by timestamp), with references to other branches at branch points
+- **`--head <id>`**: Render from root to the specified message ID (for viewing non-primary branches)
+
+Branch references appear as blockquotes showing the message ID and first line of each alternate branch.
 
 ## Markdown Output
 
