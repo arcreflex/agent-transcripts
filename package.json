@@ -8,6 +8,7 @@
   },
   "scripts": {
     "check": "bun run typecheck && bun run prettier:check",
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "prettier:check": "prettier --check .",
     "format": "prettier --write ."

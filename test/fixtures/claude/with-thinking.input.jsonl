@@ -1,0 +1,2 @@
+{"type": "user", "uuid": "msg-1", "message": {"role": "user", "content": "What's 17 * 23?"}, "timestamp": "2024-01-15T10:00:00Z"}
+{"type": "assistant", "uuid": "msg-2", "parentUuid": "msg-1", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "Let me calculate 17 * 23.\n17 * 23 = 17 * 20 + 17 * 3\n       = 340 + 51\n       = 391"}, {"type": "text", "text": "17 * 23 = 391"}]}, "timestamp": "2024-01-15T10:00:02Z"}

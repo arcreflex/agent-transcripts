@@ -1,0 +1,2 @@
+{"type": "user", "uuid": "msg-1", "message": {"role": "user", "content": "Check the files"}, "timestamp": "2024-01-15T10:00:00Z"}
+{"type": "assistant", "uuid": "msg-2", "parentUuid": "msg-1", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"file_path": "/src/main.ts"}}, {"type": "tool_use", "id": "tool-2", "name": "Glob", "input": {"pattern": "**/*.test.ts"}}, {"type": "tool_use", "id": "tool-3", "name": "Bash", "input": {"command": "ls -la", "description": "List files"}}]}, "timestamp": "2024-01-15T10:00:02Z"}
