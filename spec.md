@@ -18,6 +18,7 @@ Both stages are exposed as separate commands, plus a default command that pipeli
 ### Adapter Pattern
 
 Different source formats are handled by adapters. Adapter selection:
+
 - **Auto-detection by file path**: e.g., `.claude/` in path → Claude Code adapter
 - **Explicit flag required**: for stdin input or ambiguous paths
 - **Override available**: explicit adapter flag always takes precedence
@@ -66,11 +67,11 @@ Flat sequence of messages, each tagged with role/type. Parallel tool calls are g
 ```typescript
 interface Transcript {
   source: {
-    file: string;          // Original source file path
-    adapter: string;       // Adapter used (e.g., "claude-code")
+    file: string; // Original source file path
+    adapter: string; // Adapter used (e.g., "claude-code")
   };
   metadata: {
-    warnings: Warning[];   // Parse warnings (malformed lines, etc.)
+    warnings: Warning[]; // Parse warnings (malformed lines, etc.)
   };
   messages: Message[];
 }
@@ -78,7 +79,7 @@ interface Transcript {
 interface Warning {
   type: string;
   detail: string;
-  sourceRef?: string;      // UUID or line reference if available
+  sourceRef?: string; // UUID or line reference if available
 }
 
 type Message =
@@ -89,8 +90,8 @@ type Message =
   | ErrorMessage;
 
 interface BaseMessage {
-  sourceRef: string;       // UUID from source for provenance
-  timestamp: string;       // ISO 8601
+  sourceRef: string; // UUID from source for provenance
+  timestamp: string; // ISO 8601
 }
 
 interface UserMessage extends BaseMessage {
@@ -101,7 +102,7 @@ interface UserMessage extends BaseMessage {
 interface AssistantMessage extends BaseMessage {
   type: "assistant";
   content: string;
-  thinking?: string;       // Full thinking trace if present
+  thinking?: string; // Full thinking trace if present
 }
 
 interface SystemMessage extends BaseMessage {
@@ -111,18 +112,18 @@ interface SystemMessage extends BaseMessage {
 
 interface ToolCallGroup extends BaseMessage {
   type: "tool_calls";
-  calls: ToolCall[];       // Grouped if parallel, single-element if sequential
+  calls: ToolCall[]; // Grouped if parallel, single-element if sequential
 }
 
 interface ToolCall {
   name: string;
-  summary: string;         // One-line summary extracted from result
-  error?: string;          // If tool call failed, verbatim error
+  summary: string; // One-line summary extracted from result
+  error?: string; // If tool call failed, verbatim error
 }
 
 interface ErrorMessage extends BaseMessage {
   type: "error";
-  content: string;         // Verbatim error message
+  content: string; // Verbatim error message
 }
 ```
 
@@ -135,6 +136,8 @@ interface ErrorMessage extends BaseMessage {
 - **Cache markers**: Stripped (API optimization detail, not relevant to transcript)
 - **System messages/metadata**: Included inline with type markers
 - **Conversation boundaries**: Split into separate output files with indexed suffixes (e.g., `transcript_1.json`, `transcript_2.json`)
+
+> **TODO**: Branching conversations - Currently, if a conversation has multiple branches (same parent with multiple children), all branches are merged and sorted by timestamp. Should branches become separate transcripts instead? Needs discussion.
 
 ## Markdown Output
 
@@ -159,6 +162,7 @@ Optimized for both GitHub rendering and LLM consumption.
 ---
 
 ## User
+
 Can you help me fix the type error in auth.ts?
 
 ## Assistant
@@ -167,6 +171,7 @@ Can you help me fix the type error in auth.ts?
 <summary>Thinking...</summary>
 
 Let me look at the auth.ts file to understand the type error...
+
 </details>
 
 I'll take a look at that file.
@@ -178,6 +183,7 @@ The issue is on line 42 where...
 ---
 
 ## User
+
 ...
 ```
 
@@ -199,6 +205,7 @@ Parses `.jsonl` session files from `~/.claude/projects/*/sessions/`.
 Detection: File path contains `.claude/`
 
 Key mappings:
+
 - Extract message UUIDs for provenance
 - Parse `content` arrays for text, thinking, tool_use, tool_result blocks
 - Extract one-line summaries from tool results (look for existing summary fields or first meaningful line)

@@ -1,0 +1,23 @@
+{
+  "name": "agent-transcripts",
+  "version": "0.1.0",
+  "description": "Transform AI coding agent session files into readable transcripts",
+  "type": "module",
+  "bin": {
+    "agent-transcripts": "./bin/agent-transcripts"
+  },
+  "scripts": {
+    "check": "bun run typecheck && bun run prettier:check",
+    "typecheck": "tsc --noEmit",
+    "prettier:check": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "cmd-ts": "^0.13.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "prettier": "^3.8.0",
+    "typescript": "^5.7.2"
+  }
+}
