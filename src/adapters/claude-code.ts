@@ -335,6 +335,7 @@ function transformConversation(
 
 export const claudeCodeAdapter: Adapter = {
   name: "claude-code",
+  filePatterns: ["*.jsonl"],
 
   parse(content: string, sourcePath: string): Transcript[] {
     const { records, warnings } = parseJsonl(content);

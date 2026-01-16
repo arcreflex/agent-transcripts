@@ -15,6 +15,7 @@ src/
   cli.ts          # CLI entry point, subcommand routing
   parse.ts        # Source → intermediate JSON
   render.ts       # Intermediate JSON → markdown
+  sync.ts         # Batch sync sessions → markdown
   types.ts        # Core types (Transcript, Message, Adapter)
   adapters/       # Source format adapters (currently: claude-code)
   utils/          # Helpers (summary extraction)
@@ -43,7 +44,7 @@ Two-stage pipeline: Parse (source → JSON) → Render (JSON → markdown).
 
 - `Transcript`: source info, warnings, messages array
 - `Message`: union of UserMessage | AssistantMessage | SystemMessage | ToolCallGroup | ErrorMessage
-- `Adapter`: `{ name: string, parse(content, sourcePath): Transcript[] }`
+- `Adapter`: name, file patterns, parse function
 
 ## Adding an Adapter
 

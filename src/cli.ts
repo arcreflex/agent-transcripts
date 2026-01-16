@@ -10,9 +10,11 @@ import {
   option,
   optional,
   positional,
+  flag,
 } from "cmd-ts";
 import { parse, parseToTranscripts } from "./parse.ts";
 import { render, renderTranscript } from "./render.ts";
+import { sync } from "./sync.ts";
 
 // Read OpenRouter API key from environment for LLM-based slug generation
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -84,6 +86,38 @@ const renderCmd = command({
   },
 });
 
+// Sync subcommand
+const syncCmd = command({
+  name: "sync",
+  description: "Sync session files to markdown transcripts",
+  args: {
+    source: positional({
+      type: string,
+      displayName: "source",
+      description: "Source directory to scan for session files",
+    }),
+    output: option({
+      type: string,
+      long: "output",
+      short: "o",
+      description: "Output directory (mirrors source structure)",
+    }),
+    force: flag({
+      long: "force",
+      short: "f",
+      description: "Re-render all sessions, ignoring mtime",
+    }),
+    quiet: flag({
+      long: "quiet",
+      short: "q",
+      description: "Suppress progress output",
+    }),
+  },
+  async handler({ source, output, force, quiet }) {
+    await sync({ source, output, force, quiet });
+  },
+});
+
 // Default command: full pipeline (parse → render)
 const defaultCmd = command({
   name: "agent-transcripts",
@@ -124,6 +158,7 @@ const cli = subcommands({
   cmds: {
     parse: parseCmd,
     render: renderCmd,
+    sync: syncCmd,
   },
   // Default command when no subcommand is specified
 });
@@ -132,7 +167,7 @@ const cli = subcommands({
 const args = process.argv.slice(2);
 
 // Check if first arg is a subcommand
-if (args[0] === "parse" || args[0] === "render") {
+if (args[0] === "parse" || args[0] === "render" || args[0] === "sync") {
   run(cli, args);
 } else {
   // Run default command for full pipeline

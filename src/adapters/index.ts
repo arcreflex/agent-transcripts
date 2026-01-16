@@ -43,3 +43,10 @@ export function getAdapter(name: string): Adapter | undefined {
 export function listAdapters(): string[] {
   return Object.keys(adapters);
 }
+
+/**
+ * Get all registered adapters.
+ */
+export function getAdapters(): Adapter[] {
+  return Object.values(adapters);
+}

@@ -70,6 +70,8 @@ export interface ErrorMessage extends BaseMessage {
  */
 export interface Adapter {
   name: string;
+  /** Glob patterns for discovering session files (e.g., ["*.jsonl"]) */
+  filePatterns: string[];
   /** Parse source content into one or more transcripts (split by conversation) */
   parse(content: string, sourcePath: string): Transcript[];
 }
