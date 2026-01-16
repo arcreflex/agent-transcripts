@@ -1,8 +1,15 @@
 {
-  "name": "agent-transcripts",
+  "name": "@arcreflex/agent-transcripts",
   "version": "0.1.0",
   "description": "Transform AI coding agent session files into readable transcripts",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arcreflex/agent-transcripts.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "bin": {
     "agent-transcripts": "./bin/agent-transcripts"
   },
