@@ -8,7 +8,7 @@
     "url": "git+https://github.com/arcreflex/agent-transcripts.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "bin": {
     "agent-transcripts": "./bin/agent-transcripts"
