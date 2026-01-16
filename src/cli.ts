@@ -14,6 +14,9 @@ import {
 import { parse, parseToTranscripts } from "./parse.ts";
 import { render, renderTranscript } from "./render.ts";
 
+// Read OpenRouter API key from environment for LLM-based slug generation
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+
 // Shared options
 const inputArg = positional({
   type: optional(string),
@@ -51,8 +54,12 @@ const parseCmd = command({
     adapter: adapterOpt,
   },
   async handler({ input, output, adapter }) {
+    const naming = OPENROUTER_API_KEY
+      ? { apiKey: OPENROUTER_API_KEY }
+      : undefined;
+
     if (output) {
-      await parse({ input, output, adapter });
+      await parse({ input, output, adapter, naming });
     } else {
       // Print JSONL to stdout (one transcript per line)
       const { transcripts } = await parseToTranscripts({ input, adapter });
@@ -88,9 +95,13 @@ const defaultCmd = command({
     head: headOpt,
   },
   async handler({ input, output, adapter, head }) {
+    const naming = OPENROUTER_API_KEY
+      ? { apiKey: OPENROUTER_API_KEY }
+      : undefined;
+
     if (output) {
       // Write intermediate JSON and markdown files
-      const { outputPaths } = await parse({ input, output, adapter });
+      const { outputPaths } = await parse({ input, output, adapter, naming });
       for (const jsonPath of outputPaths) {
         const mdPath = jsonPath.replace(/\.json$/, ".md");
         await render({ input: jsonPath, output: mdPath, head });

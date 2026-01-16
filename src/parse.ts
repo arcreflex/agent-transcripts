@@ -2,15 +2,17 @@
  * Parse command: source format → intermediate JSON
  */
 
-import { basename, dirname, join } from "path";
+import { dirname, join } from "path";
 import { mkdir } from "fs/promises";
 import type { Transcript } from "./types.ts";
 import { detectAdapter, getAdapter, listAdapters } from "./adapters/index.ts";
+import { generateOutputName, type NamingOptions } from "./utils/naming.ts";
 
 export interface ParseOptions {
   input?: string; // file path, undefined for stdin
   output?: string; // output path/dir
   adapter?: string; // explicit adapter name
+  naming?: NamingOptions; // options for output file naming
 }
 
 /**
@@ -40,27 +42,24 @@ async function readInput(
 /**
  * Determine output file paths for transcripts.
  */
-function getOutputPaths(
+async function getOutputPaths(
   transcripts: Transcript[],
   inputPath: string,
   outputOption?: string,
-): string[] {
-  // Determine base name
-  let baseName: string;
-  if (inputPath === "<stdin>") {
-    baseName = "transcript";
-  } else {
-    const name = basename(inputPath);
-    baseName = name.replace(/\.jsonl?$/, "");
-  }
-
+  namingOptions?: NamingOptions,
+): Promise<string[]> {
   // Determine output directory
   let outputDir: string;
+  let explicitBaseName: string | undefined;
+
   if (outputOption) {
-    // If output looks like a file (has extension), use its directory
+    // If output looks like a file (has extension), use its directory and name
     if (outputOption.match(/\.\w+$/)) {
       outputDir = dirname(outputOption);
-      baseName = basename(outputOption).replace(/\.\w+$/, "");
+      explicitBaseName = outputOption
+        .split("/")
+        .pop()!
+        .replace(/\.\w+$/, "");
     } else {
       outputDir = outputOption;
     }
@@ -68,14 +67,33 @@ function getOutputPaths(
     outputDir = process.cwd();
   }
 
-  // Generate paths
-  if (transcripts.length === 1) {
-    return [join(outputDir, `${baseName}.json`)];
+  // Generate paths with descriptive names
+  const paths: string[] = [];
+
+  for (let i = 0; i < transcripts.length; i++) {
+    let baseName: string;
+
+    if (explicitBaseName) {
+      // User provided explicit filename
+      baseName = explicitBaseName;
+    } else {
+      // Generate descriptive name
+      baseName = await generateOutputName(
+        transcripts[i],
+        inputPath,
+        namingOptions || {},
+      );
+    }
+
+    // Add suffix for multiple transcripts
+    if (transcripts.length > 1) {
+      baseName = `${baseName}_${i + 1}`;
+    }
+
+    paths.push(join(outputDir, `${baseName}.json`));
   }
 
-  return transcripts.map((_, i) =>
-    join(outputDir, `${baseName}_${i + 1}.json`),
-  );
+  return paths;
 }
 
 export interface ParseResult {
@@ -127,7 +145,12 @@ export async function parse(
   const { transcripts, inputPath } = await parseToTranscripts(options);
 
   // Write output files
-  const outputPaths = getOutputPaths(transcripts, inputPath, options.output);
+  const outputPaths = await getOutputPaths(
+    transcripts,
+    inputPath,
+    options.output,
+    options.naming,
+  );
 
   for (let i = 0; i < transcripts.length; i++) {
     const json = JSON.stringify(transcripts[i], null, 2);
