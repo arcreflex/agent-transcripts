@@ -80,13 +80,19 @@ function getOutputPaths(
 
 export interface ParseResult {
   transcripts: Transcript[];
+  inputPath: string;
+}
+
+export interface ParseAndWriteResult extends ParseResult {
   outputPaths: string[];
 }
 
 /**
- * Parse source file(s) to intermediate JSON.
+ * Parse source file(s) to transcripts (no file I/O beyond reading input).
  */
-export async function parse(options: ParseOptions): Promise<ParseResult> {
+export async function parseToTranscripts(
+  options: ParseOptions,
+): Promise<ParseResult> {
   const { content, path: inputPath } = await readInput(options.input);
 
   // Determine adapter
@@ -108,8 +114,17 @@ export async function parse(options: ParseOptions): Promise<ParseResult> {
     );
   }
 
-  // Parse
   const transcripts = adapter.parse(content, inputPath);
+  return { transcripts, inputPath };
+}
+
+/**
+ * Parse source file(s) to intermediate JSON and write to files.
+ */
+export async function parse(
+  options: ParseOptions,
+): Promise<ParseAndWriteResult> {
+  const { transcripts, inputPath } = await parseToTranscripts(options);
 
   // Write output files
   const outputPaths = getOutputPaths(transcripts, inputPath, options.output);
@@ -123,5 +138,5 @@ export async function parse(options: ParseOptions): Promise<ParseResult> {
     console.error(`Wrote: ${outputPaths[i]}`);
   }
 
-  return { transcripts, outputPaths };
+  return { transcripts, inputPath, outputPaths };
 }

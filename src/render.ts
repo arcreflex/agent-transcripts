@@ -216,7 +216,10 @@ function tracePath(target: string, parents: Map<string, string>): string[] {
 /**
  * Render transcript to markdown with branch awareness.
  */
-function renderTranscript(transcript: Transcript, head?: string): string {
+export function renderTranscript(
+  transcript: Transcript,
+  head?: string,
+): string {
   const lines: string[] = [];
 
   // Header
@@ -345,10 +348,15 @@ export async function render(options: RenderOptions): Promise<void> {
   const { transcript, path: inputPath } = await readTranscript(options.input);
 
   const markdown = renderTranscript(transcript, options.head);
-  const outputPath = getOutputPath(inputPath, options.output);
 
-  // Ensure directory exists
-  await mkdir(dirname(outputPath), { recursive: true });
-  await Bun.write(outputPath, markdown);
-  console.error(`Wrote: ${outputPath}`);
+  if (options.output) {
+    const outputPath = getOutputPath(inputPath, options.output);
+    // Ensure directory exists
+    await mkdir(dirname(outputPath), { recursive: true });
+    await Bun.write(outputPath, markdown);
+    console.error(`Wrote: ${outputPath}`);
+  } else {
+    // Default: print to stdout
+    console.log(markdown);
+  }
 }

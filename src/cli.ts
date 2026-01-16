@@ -11,8 +11,8 @@ import {
   optional,
   positional,
 } from "cmd-ts";
-import { parse } from "./parse.ts";
-import { render } from "./render.ts";
+import { parse, parseToTranscripts } from "./parse.ts";
+import { render, renderTranscript } from "./render.ts";
 
 // Shared options
 const inputArg = positional({
@@ -25,7 +25,7 @@ const outputOpt = option({
   type: optional(string),
   long: "output",
   short: "o",
-  description: "Output path (defaults to current directory)",
+  description: "Output path (prints to stdout if not specified)",
 });
 
 const adapterOpt = option({
@@ -51,7 +51,15 @@ const parseCmd = command({
     adapter: adapterOpt,
   },
   async handler({ input, output, adapter }) {
-    await parse({ input, output, adapter });
+    if (output) {
+      await parse({ input, output, adapter });
+    } else {
+      // Print JSONL to stdout (one transcript per line)
+      const { transcripts } = await parseToTranscripts({ input, adapter });
+      for (const transcript of transcripts) {
+        console.log(JSON.stringify(transcript));
+      }
+    }
   },
 });
 
@@ -80,13 +88,20 @@ const defaultCmd = command({
     head: headOpt,
   },
   async handler({ input, output, adapter, head }) {
-    // Parse to JSON - parse() determines output paths and returns them
-    const { outputPaths } = await parse({ input, output, adapter });
-
-    // Render each transcript (JSON path → markdown path)
-    for (const jsonPath of outputPaths) {
-      const mdPath = jsonPath.replace(/\.json$/, ".md");
-      await render({ input: jsonPath, output: mdPath, head });
+    if (output) {
+      // Write intermediate JSON and markdown files
+      const { outputPaths } = await parse({ input, output, adapter });
+      for (const jsonPath of outputPaths) {
+        const mdPath = jsonPath.replace(/\.json$/, ".md");
+        await render({ input: jsonPath, output: mdPath, head });
+      }
+    } else {
+      // Stream to stdout - no intermediate files
+      const { transcripts } = await parseToTranscripts({ input, adapter });
+      for (let i = 0; i < transcripts.length; i++) {
+        if (i > 0) console.log(); // blank line between transcripts
+        console.log(renderTranscript(transcripts[i], head));
+      }
     }
   },
 });
