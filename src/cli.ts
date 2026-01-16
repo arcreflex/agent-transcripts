@@ -21,9 +21,9 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // Shared options
 const inputArg = positional({
-  type: optional(string),
+  type: string,
   displayName: "file",
-  description: "Input file (reads from stdin if not provided)",
+  description: "Input file (use - for stdin)",
 });
 
 const outputOpt = option({
@@ -118,10 +118,10 @@ const syncCmd = command({
   },
 });
 
-// Default command: full pipeline (parse → render)
-const defaultCmd = command({
-  name: "agent-transcripts",
-  description: "Transform agent session files to readable transcripts",
+// Convert subcommand: full pipeline (parse → render) - the default
+const convertCmd = command({
+  name: "convert",
+  description: "Full pipeline: parse source and render to markdown (default)",
   args: {
     input: inputArg,
     output: outputOpt,
@@ -151,25 +151,29 @@ const defaultCmd = command({
   },
 });
 
+const SUBCOMMANDS = ["convert", "parse", "render", "sync"] as const;
+
 // Main CLI with subcommands
 const cli = subcommands({
   name: "agent-transcripts",
   description: "Transform agent session files to readable transcripts",
   cmds: {
+    convert: convertCmd,
     parse: parseCmd,
     render: renderCmd,
     sync: syncCmd,
   },
-  // Default command when no subcommand is specified
 });
 
 // Run CLI
 const args = process.argv.slice(2);
 
-// Check if first arg is a subcommand
-if (args[0] === "parse" || args[0] === "render" || args[0] === "sync") {
-  run(cli, args);
-} else {
-  // Run default command for full pipeline
-  run(defaultCmd, args);
-}
+// If first arg isn't a subcommand (and isn't a help flag), prepend "convert" as the default
+const isSubcommand =
+  args.length > 0 &&
+  SUBCOMMANDS.includes(args[0] as (typeof SUBCOMMANDS)[number]);
+const isHelpFlag =
+  args.length === 0 || args[0] === "--help" || args[0] === "-h";
+const effectiveArgs = isSubcommand || isHelpFlag ? args : ["convert", ...args];
+
+run(cli, effectiveArgs);

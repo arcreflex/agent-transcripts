@@ -7,7 +7,7 @@ import { mkdir } from "fs/promises";
 import type { Transcript, Message, ToolCall } from "./types.ts";
 
 export interface RenderOptions {
-  input?: string; // file path, undefined for stdin
+  input: string; // file path, or "-" for stdin
   output?: string; // output path
   head?: string; // render branch ending at this message ID
 }
@@ -16,12 +16,12 @@ export interface RenderOptions {
  * Read transcript from file or stdin.
  */
 async function readTranscript(
-  input?: string,
+  input: string,
 ): Promise<{ transcript: Transcript; path: string }> {
   let content: string;
   let path: string;
 
-  if (input) {
+  if (input !== "-") {
     content = await Bun.file(input).text();
     path = input;
   } else {

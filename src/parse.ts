@@ -9,7 +9,7 @@ import { detectAdapter, getAdapter, listAdapters } from "./adapters/index.ts";
 import { generateOutputName, type NamingOptions } from "./utils/naming.ts";
 
 export interface ParseOptions {
-  input?: string; // file path, undefined for stdin
+  input: string; // file path, or "-" for stdin
   output?: string; // output path/dir
   adapter?: string; // explicit adapter name
   naming?: NamingOptions; // options for output file naming
@@ -19,14 +19,14 @@ export interface ParseOptions {
  * Read input content from file or stdin.
  */
 async function readInput(
-  input?: string,
+  input: string,
 ): Promise<{ content: string; path: string }> {
-  if (input) {
+  if (input !== "-") {
     const content = await Bun.file(input).text();
     return { content, path: input };
   }
 
-  // Read from stdin
+  // Read from stdin (when input is "-")
   const chunks: string[] = [];
   const reader = Bun.stdin.stream().getReader();
 
@@ -115,7 +115,7 @@ export async function parseToTranscripts(
 
   // Determine adapter
   let adapterName = options.adapter;
-  if (!adapterName && options.input) {
+  if (!adapterName && options.input !== "-") {
     adapterName = detectAdapter(options.input);
   }
 
