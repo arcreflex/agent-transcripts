@@ -100,7 +100,7 @@ const syncCmd = command({
       type: string,
       long: "output",
       short: "o",
-      description: "Output directory (mirrors source structure)",
+      description: "Output directory for transcripts",
     }),
     force: flag({
       long: "force",
@@ -114,7 +114,10 @@ const syncCmd = command({
     }),
   },
   async handler({ source, output, force, quiet }) {
-    await sync({ source, output, force, quiet });
+    const naming = OPENROUTER_API_KEY
+      ? { apiKey: OPENROUTER_API_KEY }
+      : undefined;
+    await sync({ source, output, force, quiet, naming });
   },
 });
 

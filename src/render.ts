@@ -213,14 +213,32 @@ function tracePath(target: string, parents: Map<string, string>): string[] {
   return path;
 }
 
+export interface RenderTranscriptOptions {
+  head?: string; // render branch ending at this message ID
+  sourcePath?: string; // absolute source path for front matter provenance
+}
+
 /**
  * Render transcript to markdown with branch awareness.
  */
 export function renderTranscript(
   transcript: Transcript,
-  head?: string,
+  options: RenderTranscriptOptions | string = {},
 ): string {
+  // Support legacy signature: renderTranscript(transcript, head?: string)
+  const opts: RenderTranscriptOptions =
+    typeof options === "string" ? { head: options } : options;
+  const { head, sourcePath } = opts;
+
   const lines: string[] = [];
+
+  // YAML front matter (for provenance tracking)
+  if (sourcePath) {
+    lines.push("---");
+    lines.push(`source: ${sourcePath}`);
+    lines.push("---");
+    lines.push("");
+  }
 
   // Header
   lines.push("# Transcript");
