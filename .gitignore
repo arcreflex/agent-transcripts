@@ -1,3 +1,4 @@
 node_modules/
 .npmrc
 tmp
+CLAUDE.local.md

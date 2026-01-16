@@ -200,6 +200,26 @@ function isToolResultOnly(content: string | ContentBlock[]): boolean {
 }
 
 /**
+ * Resolve a parent reference through any skipped messages.
+ * When messages are skipped (e.g., tool-result-only user messages),
+ * we redirect parent references to the skipped message's parent.
+ */
+function resolveParent(
+  parentUuid: string | null | undefined,
+  skippedParents: Map<string, string | undefined>,
+): string | undefined {
+  if (!parentUuid) return undefined;
+
+  // Follow the chain through any skipped messages
+  let current: string | undefined = parentUuid;
+  while (current && skippedParents.has(current)) {
+    current = skippedParents.get(current);
+  }
+
+  return current;
+}
+
+/**
  * Transform a conversation into our intermediate format.
  */
 function transformConversation(
@@ -208,11 +228,45 @@ function transformConversation(
   warnings: Warning[],
 ): Transcript {
   const messages: Message[] = [];
+  // Track skipped message UUIDs → their parent UUIDs for chain repair
+  const skippedParents = new Map<string, string | undefined>();
 
+  // First pass: identify which messages will be skipped
+  for (const rec of records) {
+    if (!rec.uuid) continue;
+
+    let willSkip = false;
+
+    if (rec.type === "user" && rec.message) {
+      if (isToolResultOnly(rec.message.content)) {
+        willSkip = true;
+      } else {
+        const text = extractText(rec.message.content);
+        if (!text.trim()) willSkip = true;
+      }
+    } else if (rec.type === "assistant" && rec.message) {
+      const text = extractText(rec.message.content);
+      const thinking = extractThinking(rec.message.content);
+      const toolCalls = extractToolCalls(rec.message.content);
+      // Only skip if no text, no thinking, AND no tool calls
+      if (!text.trim() && !thinking && toolCalls.length === 0) {
+        willSkip = true;
+      }
+    } else if (rec.type === "system") {
+      const text = rec.content || "";
+      if (!text.trim()) willSkip = true;
+    }
+
+    if (willSkip) {
+      skippedParents.set(rec.uuid, rec.parentUuid || undefined);
+    }
+  }
+
+  // Second pass: build messages with corrected parent references
   for (const rec of records) {
     const sourceRef = rec.uuid || "";
     const timestamp = rec.timestamp || new Date().toISOString();
-    const parentMessageRef = rec.parentUuid || undefined;
+    const parentMessageRef = resolveParent(rec.parentUuid, skippedParents);
 
     if (rec.type === "user" && rec.message) {
       // Skip tool-result-only user messages (they're just tool responses)

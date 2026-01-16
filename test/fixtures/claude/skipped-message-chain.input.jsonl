@@ -1,0 +1,6 @@
+{"type": "user", "uuid": "msg-1", "message": {"role": "user", "content": "Read the config file"}, "timestamp": "2024-01-15T10:00:00Z"}
+{"type": "assistant", "uuid": "msg-2", "parentUuid": "msg-1", "message": {"role": "assistant", "content": [{"type": "text", "text": "I'll read the config file for you."}, {"type": "tool_use", "id": "tool-1", "name": "Read", "input": {"file_path": "/project/config.json"}}]}, "timestamp": "2024-01-15T10:00:02Z"}
+{"type": "user", "uuid": "msg-3", "parentUuid": "msg-2", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tool-1", "content": "config contents here"}]}, "timestamp": "2024-01-15T10:00:03Z"}
+{"type": "assistant", "uuid": "msg-4", "parentUuid": "msg-3", "message": {"role": "assistant", "content": [{"type": "text", "text": "The config file contains your settings."}]}, "timestamp": "2024-01-15T10:00:05Z"}
+{"type": "user", "uuid": "msg-5", "parentUuid": "msg-4", "message": {"role": "user", "content": "Thanks!"}, "timestamp": "2024-01-15T10:00:10Z"}
+{"type": "assistant", "uuid": "msg-6", "parentUuid": "msg-5", "message": {"role": "assistant", "content": [{"type": "text", "text": "You're welcome!"}]}, "timestamp": "2024-01-15T10:00:12Z"}
