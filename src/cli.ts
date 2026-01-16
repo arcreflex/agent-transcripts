@@ -15,6 +15,7 @@ import {
 import { parse, parseToTranscripts } from "./parse.ts";
 import { render, renderTranscript } from "./render.ts";
 import { sync } from "./sync.ts";
+import { convertToDirectory } from "./convert.ts";
 
 // Read OpenRouter API key from environment for LLM-based slug generation
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -121,6 +122,13 @@ const syncCmd = command({
   },
 });
 
+/**
+ * Check if output looks like a directory (no extension) vs a specific file.
+ */
+function isDirectoryOutput(output: string): boolean {
+  return !output.match(/\.\w+$/);
+}
+
 // Convert subcommand: full pipeline (parse → render) - the default
 const convertCmd = command({
   name: "convert",
@@ -136,15 +144,24 @@ const convertCmd = command({
       ? { apiKey: OPENROUTER_API_KEY }
       : undefined;
 
-    if (output) {
-      // Write intermediate JSON and markdown files
+    if (output && isDirectoryOutput(output)) {
+      // Directory output: use sync-like behavior with provenance tracking
+      await convertToDirectory({
+        input,
+        outputDir: output,
+        adapter,
+        head,
+        naming,
+      });
+    } else if (output) {
+      // Explicit file output: write intermediate JSON and markdown
       const { outputPaths } = await parse({ input, output, adapter, naming });
       for (const jsonPath of outputPaths) {
         const mdPath = jsonPath.replace(/\.json$/, ".md");
         await render({ input: jsonPath, output: mdPath, head });
       }
     } else {
-      // Stream to stdout - no intermediate files
+      // No output: stream to stdout
       const { transcripts } = await parseToTranscripts({ input, adapter });
       for (let i = 0; i < transcripts.length; i++) {
         if (i > 0) console.log(); // blank line between transcripts
