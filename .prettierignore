@@ -1,2 +1,6 @@
 # Test fixtures should match exact tool output
 test/fixtures/
+
+# Symlinks (prettier doesn't handle them)
+CLAUDE.md
+AGENTS.md
