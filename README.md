@@ -60,7 +60,7 @@ Two-stage pipeline: Parse (source → JSON) → Render (JSON → markdown).
 - Auto-detection: paths containing `.claude/` → claude-code adapter
 - Branching conversations preserved via `parentMessageRef` on messages
 - Provenance tracking: rendered markdown includes YAML front matter with source path
-- Descriptive naming: output files named by date + summary (LLM-enhanced if API key set)
+- Descriptive naming: output files named by datetime + summary (LLM-enhanced if API key set)
 - Sync uses sessions-index.json for discovery (claude-code), skipping subagent files
 - Sync uses mtime to skip unchanged sources
 
