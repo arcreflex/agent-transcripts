@@ -66,12 +66,21 @@ export interface ErrorMessage extends BaseMessage {
 }
 
 /**
+ * A session file discovered by an adapter.
+ */
+export interface DiscoveredSession {
+  path: string;
+  relativePath: string;
+  mtime: number;
+}
+
+/**
  * Adapter interface - each source format implements this.
  */
 export interface Adapter {
   name: string;
-  /** Glob patterns for discovering session files (e.g., ["*.jsonl"]) */
-  filePatterns: string[];
+  /** Discover session files in the given directory */
+  discover(source: string): Promise<DiscoveredSession[]>;
   /** Parse source content into one or more transcripts (split by conversation) */
   parse(content: string, sourcePath: string): Transcript[];
 }

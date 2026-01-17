@@ -61,13 +61,14 @@ Two-stage pipeline: Parse (source → JSON) → Render (JSON → markdown).
 - Branching conversations preserved via `parentMessageRef` on messages
 - Provenance tracking: rendered markdown includes YAML front matter with source path
 - Descriptive naming: output files named by date + summary (LLM-enhanced if API key set)
+- Sync uses sessions-index.json for discovery (claude-code), skipping subagent files
 - Sync uses mtime to skip unchanged sources
 
 ## Key Types
 
 - `Transcript`: source info, warnings, messages array
 - `Message`: union of UserMessage | AssistantMessage | SystemMessage | ToolCallGroup | ErrorMessage
-- `Adapter`: name, file patterns, parse function
+- `Adapter`: name, discover function, parse function
 
 ## Adding an Adapter
 

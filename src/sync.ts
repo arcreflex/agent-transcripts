@@ -7,11 +7,10 @@
  * Tracks provenance via YAML front matter to correlate updates.
  */
 
-import { Glob } from "bun";
 import { dirname, join } from "path";
-import { mkdir, stat } from "fs/promises";
+import { mkdir } from "fs/promises";
 import { getAdapters } from "./adapters/index.ts";
-import type { Adapter } from "./types.ts";
+import type { Adapter, DiscoveredSession } from "./types.ts";
 import { renderTranscript } from "./render.ts";
 import { generateOutputName, type NamingOptions } from "./utils/naming.ts";
 import {
@@ -34,43 +33,8 @@ export interface SyncResult {
   errors: number;
 }
 
-interface SessionFile {
-  path: string;
-  relativePath: string;
-  mtime: number;
+interface SessionFile extends DiscoveredSession {
   adapter: Adapter;
-}
-
-/**
- * Discover session files for a specific adapter.
- */
-async function discoverForAdapter(
-  source: string,
-  adapter: Adapter,
-): Promise<SessionFile[]> {
-  const sessions: SessionFile[] = [];
-
-  for (const pattern of adapter.filePatterns) {
-    const glob = new Glob(`**/${pattern}`);
-
-    for await (const file of glob.scan({ cwd: source, absolute: false })) {
-      const fullPath = join(source, file);
-
-      try {
-        const fileStat = await stat(fullPath);
-        sessions.push({
-          path: fullPath,
-          relativePath: file,
-          mtime: fileStat.mtime.getTime(),
-          adapter,
-        });
-      } catch {
-        // Skip files we can't stat
-      }
-    }
-  }
-
-  return sessions;
 }
 
 /**
@@ -93,11 +57,13 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
     );
   }
 
-  // Discover sessions for each adapter
+  // Discover sessions from all adapters
   const sessions: SessionFile[] = [];
   for (const adapter of getAdapters()) {
-    const adapterSessions = await discoverForAdapter(source, adapter);
-    sessions.push(...adapterSessions);
+    const discovered = await adapter.discover(source);
+    for (const session of discovered) {
+      sessions.push({ ...session, adapter });
+    }
   }
 
   if (!quiet) {

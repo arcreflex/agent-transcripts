@@ -4,14 +4,33 @@
  * Parses session files from ~/.claude/projects/{project}/sessions/{session}.jsonl
  */
 
+import { Glob } from "bun";
+import { basename, join, relative } from "path";
+import { stat } from "fs/promises";
 import type {
   Adapter,
+  DiscoveredSession,
   Transcript,
   Message,
   Warning,
   ToolCall,
 } from "../types.ts";
 import { extractToolSummary } from "../utils/summary.ts";
+
+/**
+ * Claude Code sessions-index.json structure.
+ */
+interface SessionsIndex {
+  version: number;
+  entries: SessionIndexEntry[];
+}
+
+interface SessionIndexEntry {
+  sessionId: string;
+  fullPath: string;
+  fileMtime: number;
+  isSidechain: boolean;
+}
 
 // Claude Code JSONL record types
 interface ClaudeRecord {
@@ -333,9 +352,86 @@ function transformConversation(
   };
 }
 
+/**
+ * Discover sessions from sessions-index.json.
+ * Returns undefined if index doesn't exist or is invalid.
+ */
+async function discoverFromIndex(
+  source: string,
+): Promise<DiscoveredSession[] | undefined> {
+  const indexPath = join(source, "sessions-index.json");
+
+  try {
+    const content = await Bun.file(indexPath).text();
+    const index: SessionsIndex = JSON.parse(content);
+
+    if (index.version !== 1 || !Array.isArray(index.entries)) {
+      return undefined;
+    }
+
+    const sessions: DiscoveredSession[] = [];
+
+    for (const entry of index.entries) {
+      // Skip sidechains (subagents)
+      if (entry.isSidechain) continue;
+
+      // Verify the file exists and get current mtime
+      try {
+        const fileStat = await stat(entry.fullPath);
+        sessions.push({
+          path: entry.fullPath,
+          relativePath:
+            relative(source, entry.fullPath) || basename(entry.fullPath),
+          mtime: fileStat.mtime.getTime(),
+        });
+      } catch {
+        // Skip files that no longer exist
+      }
+    }
+
+    return sessions;
+  } catch {
+    // Index doesn't exist or is invalid
+    return undefined;
+  }
+}
+
+/**
+ * Discover sessions via glob pattern fallback.
+ */
+async function discoverByGlob(source: string): Promise<DiscoveredSession[]> {
+  const sessions: DiscoveredSession[] = [];
+  const glob = new Glob("**/*.jsonl");
+
+  for await (const file of glob.scan({ cwd: source, absolute: false })) {
+    // Skip files in subagents directories
+    if (file.includes("/subagents/")) continue;
+
+    const fullPath = join(source, file);
+
+    try {
+      const fileStat = await stat(fullPath);
+      sessions.push({
+        path: fullPath,
+        relativePath: file,
+        mtime: fileStat.mtime.getTime(),
+      });
+    } catch {
+      // Skip files we can't stat
+    }
+  }
+
+  return sessions;
+}
+
 export const claudeCodeAdapter: Adapter = {
   name: "claude-code",
-  filePatterns: ["*.jsonl"],
+
+  async discover(source: string): Promise<DiscoveredSession[]> {
+    // Try index-based discovery first, fall back to glob
+    const fromIndex = await discoverFromIndex(source);
+    return fromIndex ?? (await discoverByGlob(source));
+  },
 
   parse(content: string, sourcePath: string): Transcript[] {
     const { records, warnings } = parseJsonl(content);
