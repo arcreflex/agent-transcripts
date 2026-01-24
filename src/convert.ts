@@ -1,18 +1,23 @@
 /**
  * Convert command: full pipeline with provenance tracking.
  *
- * When output is a directory, uses the same replace-existing behavior
- * as sync: scans for existing outputs by provenance and replaces them.
+ * When output is a directory, uses provenance tracking via transcripts.json
+ * index to manage output files.
  */
 
-import { dirname, join, resolve } from "path";
-import { mkdir, stat } from "fs/promises";
+import { join } from "path";
+import { mkdir } from "fs/promises";
 import { parseToTranscripts } from "./parse.ts";
 import { renderTranscript } from "./render.ts";
-import { generateOutputName, type NamingOptions } from "./utils/naming.ts";
+import { generateOutputName, extractSessionId } from "./utils/naming.ts";
 import {
-  findExistingOutputs,
-  deleteExistingOutputs,
+  loadIndex,
+  saveIndex,
+  removeEntriesForSource,
+  restoreEntries,
+  deleteOutputFiles,
+  setEntry,
+  normalizeSourcePath,
 } from "./utils/provenance.ts";
 
 export interface ConvertToDirectoryOptions {
@@ -20,7 +25,6 @@ export interface ConvertToDirectoryOptions {
   outputDir: string;
   adapter?: string;
   head?: string;
-  naming?: NamingOptions;
 }
 
 /**
@@ -30,7 +34,10 @@ export interface ConvertToDirectoryOptions {
 export async function convertToDirectory(
   options: ConvertToDirectoryOptions,
 ): Promise<void> {
-  const { input, outputDir, adapter, head, naming } = options;
+  const { input, outputDir, adapter, head } = options;
+
+  // Ensure output directory exists
+  await mkdir(outputDir, { recursive: true });
 
   // Parse input to transcripts
   const { transcripts, inputPath } = await parseToTranscripts({
@@ -38,41 +45,82 @@ export async function convertToDirectory(
     adapter,
   });
 
-  // Resolve absolute source path for provenance tracking
-  const sourcePath = inputPath === "<stdin>" ? "<stdin>" : resolve(inputPath);
+  // Normalize source path for consistent index keys
+  const sourcePath = normalizeSourcePath(inputPath);
 
-  // Find and delete existing outputs for this source
+  // Load index and handle existing outputs
+  const index = await loadIndex(outputDir);
+
+  // Remove old entries (save for restoration on error)
+  const removedEntries =
+    sourcePath !== "<stdin>" ? removeEntriesForSource(index, sourcePath) : [];
+
+  // Get source mtime for index entry
+  let sourceMtime = Date.now();
   if (sourcePath !== "<stdin>") {
-    const existingOutputs = await findExistingOutputs(outputDir, sourcePath);
-    if (existingOutputs.length > 0) {
-      await deleteExistingOutputs(existingOutputs);
+    try {
+      const stat = await Bun.file(sourcePath).stat();
+      if (stat) {
+        sourceMtime = stat.mtime.getTime();
+      }
+    } catch {
+      // Use current time as fallback
     }
   }
 
-  // Generate fresh outputs
-  for (let i = 0; i < transcripts.length; i++) {
-    const transcript = transcripts[i];
-    const suffix = transcripts.length > 1 ? `_${i + 1}` : undefined;
+  const sessionId = extractSessionId(inputPath);
+  const newOutputs: string[] = [];
 
-    // Generate descriptive name
-    const baseName = await generateOutputName(
-      transcript,
-      inputPath,
-      naming || {},
-    );
-    const finalName = suffix ? `${baseName}${suffix}` : baseName;
-    const outputPath = join(outputDir, `${finalName}.md`);
+  try {
+    // Generate fresh outputs
+    for (let i = 0; i < transcripts.length; i++) {
+      const transcript = transcripts[i];
+      const segmentIndex = transcripts.length > 1 ? i + 1 : undefined;
 
-    // Ensure output directory exists
-    await mkdir(dirname(outputPath), { recursive: true });
+      // Generate deterministic name
+      const baseName = generateOutputName(transcript, inputPath);
+      const suffix = segmentIndex ? `_${segmentIndex}` : "";
+      const relativePath = `${baseName}${suffix}.md`;
+      const outputPath = join(outputDir, relativePath);
 
-    // Render with provenance front matter
-    const markdown = renderTranscript(transcript, {
-      head,
-      sourcePath: sourcePath !== "<stdin>" ? sourcePath : undefined,
-    });
-    await Bun.write(outputPath, markdown);
+      // Render with provenance front matter
+      const markdown = renderTranscript(transcript, {
+        head,
+        sourcePath: sourcePath !== "<stdin>" ? sourcePath : undefined,
+      });
+      await Bun.write(outputPath, markdown);
+      newOutputs.push(relativePath);
 
-    console.error(`Wrote: ${outputPath}`);
+      // Update index (only for non-stdin sources)
+      if (sourcePath !== "<stdin>") {
+        setEntry(index, relativePath, {
+          source: sourcePath,
+          sourceMtime,
+          sessionId,
+          segmentIndex,
+          syncedAt: new Date().toISOString(),
+        });
+      }
+
+      console.error(`Wrote: ${outputPath}`);
+    }
+
+    // Success: delete old output files (after new ones are written)
+    const oldFilenames = removedEntries.map((e) => e.filename);
+    const toDelete = oldFilenames.filter((f) => !newOutputs.includes(f));
+    if (toDelete.length > 0) {
+      await deleteOutputFiles(outputDir, toDelete);
+    }
+  } catch (error) {
+    // Clean up any newly written files before restoring old entries
+    if (newOutputs.length > 0) {
+      await deleteOutputFiles(outputDir, newOutputs);
+    }
+    // Restore old entries on error to preserve provenance
+    restoreEntries(index, removedEntries);
+    throw error;
   }
+
+  // Save index
+  await saveIndex(outputDir, index);
 }

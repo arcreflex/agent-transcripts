@@ -2,113 +2,227 @@
  * Provenance tracking utilities.
  *
  * Tracks the relationship between source files and output transcripts
- * via YAML front matter, enabling update-in-place behavior.
+ * via transcripts.json index (primary) and YAML front matter (for self-documenting files).
  */
 
-import { Glob } from "bun";
-import { join } from "path";
-import { stat, unlink } from "fs/promises";
+import { join, resolve } from "path";
+import { existsSync } from "fs";
+import { rename, unlink } from "fs/promises";
 
-/**
- * Extract source path from YAML front matter.
- * Returns null if no front matter or no source field.
- */
-export function extractSourceFromFrontMatter(content: string): string | null {
-  // Match YAML front matter at start of file
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return null;
+const INDEX_FILENAME = "transcripts.json";
 
-  // Extract source field (simple line-based parsing)
-  const frontMatter = match[1];
-  const sourceLine = frontMatter
-    .split("\n")
-    .find((line) => line.startsWith("source:"));
-  if (!sourceLine) return null;
+// ============================================================================
+// Index Types
+// ============================================================================
 
-  return sourceLine.replace(/^source:\s*/, "").trim();
+export interface TranscriptEntry {
+  source: string; // absolute path to source
+  sourceMtime: number; // ms since epoch
+  sessionId: string; // full session ID from source filename
+  segmentIndex?: number; // for multi-transcript sources (1-indexed)
+  syncedAt: string; // ISO timestamp
 }
 
-/**
- * Scan output directory for existing transcripts.
- * Returns map from absolute source path → all output file paths for that source.
- */
-export async function scanOutputDirectory(
-  outputDir: string,
-): Promise<Map<string, string[]>> {
-  const sourceToOutputs = new Map<string, string[]>();
-  const glob = new Glob("**/*.md");
+export interface TranscriptsIndex {
+  version: 1;
+  entries: Record<string, TranscriptEntry>; // outputFilename → entry
+}
 
-  for await (const file of glob.scan({ cwd: outputDir, absolute: false })) {
-    const fullPath = join(outputDir, file);
-    try {
-      const content = await Bun.file(fullPath).text();
-      const sourcePath = extractSourceFromFrontMatter(content);
-      if (sourcePath) {
-        const existing = sourceToOutputs.get(sourcePath) || [];
-        existing.push(fullPath);
-        sourceToOutputs.set(sourcePath, existing);
-      }
-    } catch {
-      // Skip files we can't read
+// ============================================================================
+// Path Utilities
+// ============================================================================
+
+/**
+ * Normalize a source path to absolute for consistent index keys.
+ */
+export function normalizeSourcePath(sourcePath: string): string {
+  if (sourcePath === "<stdin>") return sourcePath;
+  return resolve(sourcePath);
+}
+
+// ============================================================================
+// Index I/O
+// ============================================================================
+
+/**
+ * Load transcripts.json index from output directory.
+ * Returns empty index if file doesn't exist. Warns on corrupt file.
+ */
+export async function loadIndex(outputDir: string): Promise<TranscriptsIndex> {
+  const indexPath = join(outputDir, INDEX_FILENAME);
+  try {
+    const content = await Bun.file(indexPath).text();
+    const data = JSON.parse(content) as TranscriptsIndex;
+    // Validate version
+    if (data.version !== 1) {
+      console.error(
+        `Warning: Unknown index version ${data.version}, creating fresh index`,
+      );
+      return { version: 1, entries: {} };
     }
+    return data;
+  } catch (err) {
+    // Distinguish between missing file (expected) and corrupt file (unexpected)
+    const isEnoent =
+      err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT";
+    if (!isEnoent) {
+      console.error(
+        `Warning: Could not parse index file, starting fresh: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return { version: 1, entries: {} };
   }
-
-  return sourceToOutputs;
 }
 
 /**
- * Find existing outputs for a specific source path.
+ * Save transcripts.json index to output directory.
+ * Uses atomic write (write to .tmp, then rename) to prevent corruption.
  */
-export async function findExistingOutputs(
+export async function saveIndex(
   outputDir: string,
-  sourcePath: string,
-): Promise<string[]> {
-  const allOutputs = await scanOutputDirectory(outputDir);
-  return allOutputs.get(sourcePath) || [];
-}
-
-/**
- * Delete existing output files, with warnings on failure.
- */
-export async function deleteExistingOutputs(
-  paths: string[],
-  quiet = false,
+  index: TranscriptsIndex,
 ): Promise<void> {
-  for (const oldPath of paths) {
+  const indexPath = join(outputDir, INDEX_FILENAME);
+  const tmpPath = `${indexPath}.tmp`;
+
+  const content = JSON.stringify(index, null, 2) + "\n";
+  await Bun.write(tmpPath, content);
+  try {
+    await rename(tmpPath, indexPath);
+  } catch (err) {
+    // Clean up temp file on failure
     try {
-      await unlink(oldPath);
-      if (!quiet) {
-        console.error(`Deleted: ${oldPath}`);
-      }
-    } catch (err) {
-      // Warn but continue - file may already be gone or have permission issues
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`Warning: could not delete ${oldPath}: ${msg}`);
+      await unlink(tmpPath);
+    } catch {
+      // Ignore cleanup errors
     }
+    throw err;
   }
 }
 
-/**
- * Check if any outputs are stale relative to source mtime.
- */
-export async function hasStaleOutputs(
-  existingOutputs: string[],
-  expectedCount: number,
-  sourceMtime: number,
-): Promise<boolean> {
-  if (existingOutputs.length !== expectedCount) return true;
+// ============================================================================
+// Index Operations
+// ============================================================================
 
-  for (const outputPath of existingOutputs) {
-    try {
-      const outputStat = await stat(outputPath);
-      if (outputStat.mtime.getTime() < sourceMtime) {
-        return true;
-      }
-    } catch {
-      // Output doesn't exist
+/**
+ * Get all output filenames for a given source path.
+ */
+export function getOutputsForSource(
+  index: TranscriptsIndex,
+  sourcePath: string,
+): string[] {
+  const outputs: string[] = [];
+  for (const [filename, entry] of Object.entries(index.entries)) {
+    if (entry.source === sourcePath) {
+      outputs.push(filename);
+    }
+  }
+  return outputs;
+}
+
+/**
+ * Check if outputs for a source are stale.
+ * Returns true if:
+ * - No outputs exist for this source
+ * - Output count doesn't match expected
+ * - Any output file is missing from disk
+ * - Source mtime is newer than recorded mtime
+ */
+export function isStale(
+  index: TranscriptsIndex,
+  sourcePath: string,
+  sourceMtime: number,
+  expectedCount: number,
+  outputDir: string,
+): boolean {
+  const outputs = getOutputsForSource(index, sourcePath);
+
+  if (outputs.length !== expectedCount) {
+    return true;
+  }
+
+  // Check if outputs actually exist on disk
+  for (const filename of outputs) {
+    if (!existsSync(join(outputDir, filename))) {
+      return true;
+    }
+  }
+
+  // Check if source has been modified since last sync
+  for (const filename of outputs) {
+    const entry = index.entries[filename];
+    if (entry && entry.sourceMtime < sourceMtime) {
       return true;
     }
   }
 
   return false;
+}
+
+/**
+ * Set or update an entry in the index.
+ * outputPath should be relative to the output directory.
+ */
+export function setEntry(
+  index: TranscriptsIndex,
+  outputPath: string,
+  entry: TranscriptEntry,
+): void {
+  index.entries[outputPath] = entry;
+}
+
+/**
+ * Remove all entries for a given source path.
+ * Returns the removed entries (for potential restoration on error).
+ */
+export function removeEntriesForSource(
+  index: TranscriptsIndex,
+  sourcePath: string,
+): Array<{ filename: string; entry: TranscriptEntry }> {
+  const removed: Array<{ filename: string; entry: TranscriptEntry }> = [];
+  for (const [filename, entry] of Object.entries(index.entries)) {
+    if (entry.source === sourcePath) {
+      removed.push({ filename, entry });
+      delete index.entries[filename];
+    }
+  }
+  return removed;
+}
+
+/**
+ * Restore previously removed entries to the index.
+ */
+export function restoreEntries(
+  index: TranscriptsIndex,
+  entries: Array<{ filename: string; entry: TranscriptEntry }>,
+): void {
+  for (const { filename, entry } of entries) {
+    index.entries[filename] = entry;
+  }
+}
+
+// ============================================================================
+// File Operations
+// ============================================================================
+
+/**
+ * Delete output files, with warnings on failure.
+ */
+export async function deleteOutputFiles(
+  outputDir: string,
+  filenames: string[],
+  quiet = false,
+): Promise<void> {
+  for (const filename of filenames) {
+    const fullPath = join(outputDir, filename);
+    try {
+      await unlink(fullPath);
+      if (!quiet) {
+        console.error(`Deleted: ${fullPath}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Warning: could not delete ${fullPath}: ${msg}`);
+    }
+  }
 }

@@ -12,13 +12,10 @@ import {
   positional,
   flag,
 } from "cmd-ts";
-import { parse, parseToTranscripts } from "./parse.ts";
-import { render, renderTranscript } from "./render.ts";
+import { parseToTranscripts } from "./parse.ts";
+import { renderTranscript } from "./render.ts";
 import { sync } from "./sync.ts";
 import { convertToDirectory } from "./convert.ts";
-
-// Read OpenRouter API key from environment for LLM-based slug generation
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // Shared options
 const inputArg = positional({
@@ -31,7 +28,7 @@ const outputOpt = option({
   type: optional(string),
   long: "output",
   short: "o",
-  description: "Output path (prints to stdout if not specified)",
+  description: "Output directory (prints to stdout if not specified)",
 });
 
 const adapterOpt = option({
@@ -45,46 +42,6 @@ const headOpt = option({
   type: optional(string),
   long: "head",
   description: "Render branch ending at this message ID (default: latest)",
-});
-
-// Parse subcommand
-const parseCmd = command({
-  name: "parse",
-  description: "Parse source format to intermediate JSON",
-  args: {
-    input: inputArg,
-    output: outputOpt,
-    adapter: adapterOpt,
-  },
-  async handler({ input, output, adapter }) {
-    const naming = OPENROUTER_API_KEY
-      ? { apiKey: OPENROUTER_API_KEY }
-      : undefined;
-
-    if (output) {
-      await parse({ input, output, adapter, naming });
-    } else {
-      // Print JSONL to stdout (one transcript per line)
-      const { transcripts } = await parseToTranscripts({ input, adapter });
-      for (const transcript of transcripts) {
-        console.log(JSON.stringify(transcript));
-      }
-    }
-  },
-});
-
-// Render subcommand
-const renderCmd = command({
-  name: "render",
-  description: "Render intermediate JSON to markdown",
-  args: {
-    input: inputArg,
-    output: outputOpt,
-    head: headOpt,
-  },
-  async handler({ input, output, head }) {
-    await render({ input, output, head });
-  },
 });
 
 // Sync subcommand
@@ -115,10 +72,7 @@ const syncCmd = command({
     }),
   },
   async handler({ source, output, force, quiet }) {
-    const naming = OPENROUTER_API_KEY
-      ? { apiKey: OPENROUTER_API_KEY }
-      : undefined;
-    await sync({ source, output, force, quiet, naming });
+    await sync({ source, output, force, quiet });
   },
 });
 
@@ -140,26 +94,20 @@ const convertCmd = command({
     head: headOpt,
   },
   async handler({ input, output, adapter, head }) {
-    const naming = OPENROUTER_API_KEY
-      ? { apiKey: OPENROUTER_API_KEY }
-      : undefined;
-
     if (output && isDirectoryOutput(output)) {
-      // Directory output: use sync-like behavior with provenance tracking
+      // Directory output: use provenance tracking
       await convertToDirectory({
         input,
         outputDir: output,
         adapter,
         head,
-        naming,
       });
     } else if (output) {
-      // Explicit file output: write intermediate JSON and markdown
-      const { outputPaths } = await parse({ input, output, adapter, naming });
-      for (const jsonPath of outputPaths) {
-        const mdPath = jsonPath.replace(/\.json$/, ".md");
-        await render({ input: jsonPath, output: mdPath, head });
-      }
+      // Explicit file output: not supported anymore (use directory)
+      console.error(
+        "Error: Explicit file output not supported. Use a directory path instead.",
+      );
+      process.exit(1);
     } else {
       // No output: stream to stdout
       const { transcripts } = await parseToTranscripts({ input, adapter });
@@ -171,7 +119,7 @@ const convertCmd = command({
   },
 });
 
-const SUBCOMMANDS = ["convert", "parse", "render", "sync"] as const;
+const SUBCOMMANDS = ["convert", "sync"] as const;
 
 // Main CLI with subcommands
 const cli = subcommands({
@@ -179,8 +127,6 @@ const cli = subcommands({
   description: "Transform agent session files to readable transcripts",
   cmds: {
     convert: convertCmd,
-    parse: parseCmd,
-    render: renderCmd,
     sync: syncCmd,
   },
 });

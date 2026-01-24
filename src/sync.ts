@@ -3,8 +3,7 @@
  *
  * Discovers session files in source directory, parses them,
  * and writes rendered markdown to output directory.
- * Uses LLM-generated descriptive names when API key is available.
- * Tracks provenance via YAML front matter to correlate updates.
+ * Tracks provenance via transcripts.json index.
  */
 
 import { dirname, join } from "path";
@@ -12,11 +11,16 @@ import { mkdir } from "fs/promises";
 import { getAdapters } from "./adapters/index.ts";
 import type { Adapter, DiscoveredSession } from "./types.ts";
 import { renderTranscript } from "./render.ts";
-import { generateOutputName, type NamingOptions } from "./utils/naming.ts";
+import { generateOutputName, extractSessionId } from "./utils/naming.ts";
 import {
-  scanOutputDirectory,
-  deleteExistingOutputs,
-  hasStaleOutputs,
+  loadIndex,
+  saveIndex,
+  isStale,
+  setEntry,
+  removeEntriesForSource,
+  restoreEntries,
+  deleteOutputFiles,
+  normalizeSourcePath,
 } from "./utils/provenance.ts";
 
 export interface SyncOptions {
@@ -24,7 +28,6 @@ export interface SyncOptions {
   output: string;
   force?: boolean;
   quiet?: boolean;
-  naming?: NamingOptions;
 }
 
 export interface SyncResult {
@@ -41,19 +44,18 @@ interface SessionFile extends DiscoveredSession {
  * Sync session files from source to output directory.
  */
 export async function sync(options: SyncOptions): Promise<SyncResult> {
-  const { source, output, force = false, quiet = false, naming } = options;
+  const { source, output, force = false, quiet = false } = options;
 
   const result: SyncResult = { synced: 0, skipped: 0, errors: 0 };
 
-  // Scan output directory for existing transcripts (source → output paths)
-  const existingOutputs = await scanOutputDirectory(output);
-  if (!quiet && existingOutputs.size > 0) {
-    const totalFiles = [...existingOutputs.values()].reduce(
-      (sum, paths) => sum + paths.length,
-      0,
-    );
+  // Ensure output directory exists
+  await mkdir(output, { recursive: true });
+
+  // Load index
+  const index = await loadIndex(output);
+  if (!quiet && Object.keys(index.entries).length > 0) {
     console.error(
-      `Found ${totalFiles} existing transcript(s) from ${existingOutputs.size} source(s)`,
+      `Found ${Object.keys(index.entries).length} existing transcript(s) in index`,
     );
   }
 
@@ -72,22 +74,19 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
 
   // Process each session
   for (const session of sessions) {
+    // Normalize source path for consistent index keys
+    const sourcePath = normalizeSourcePath(session.path);
+
     try {
       // Read and parse using the adapter that discovered this file
       const content = await Bun.file(session.path).text();
       const transcripts = session.adapter.parse(content, session.path);
 
-      // Get all existing outputs for this source
-      const existingPaths = existingOutputs.get(session.path) || [];
-
-      // Check if sync needed (force, count mismatch, or any stale)
+      // Check if sync needed (force or stale)
       const needsUpdate =
         force ||
-        (await hasStaleOutputs(
-          existingPaths,
-          transcripts.length,
-          session.mtime,
-        ));
+        isStale(index, sourcePath, session.mtime, transcripts.length, output);
+
       if (!needsUpdate) {
         if (!quiet) {
           console.error(`Skip (up to date): ${session.relativePath}`);
@@ -96,45 +95,80 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
         continue;
       }
 
-      // Delete existing outputs before regenerating
-      await deleteExistingOutputs(existingPaths, quiet);
+      // Remove entries from index (save for potential restoration on error)
+      const removedEntries = removeEntriesForSource(index, sourcePath);
 
-      // Generate fresh outputs for all transcripts
-      for (let i = 0; i < transcripts.length; i++) {
-        const transcript = transcripts[i];
-        const suffix = transcripts.length > 1 ? `_${i + 1}` : undefined;
+      // Track new outputs for this session
+      const newOutputs: string[] = [];
+      const sessionId = extractSessionId(session.path);
 
-        // Generate descriptive name, preserving directory structure
-        const baseName = await generateOutputName(
-          transcript,
-          session.path,
-          naming || {},
-        );
-        const finalName = suffix ? `${baseName}${suffix}` : baseName;
-        const relativeDir = dirname(session.relativePath);
-        const outputPath = join(output, relativeDir, `${finalName}.md`);
+      try {
+        // Generate fresh outputs for all transcripts
+        for (let i = 0; i < transcripts.length; i++) {
+          const transcript = transcripts[i];
+          const segmentIndex = transcripts.length > 1 ? i + 1 : undefined;
 
-        // Ensure output directory exists
-        await mkdir(dirname(outputPath), { recursive: true });
+          // Generate deterministic name
+          const baseName = generateOutputName(transcript, session.path);
+          const suffix = segmentIndex ? `_${segmentIndex}` : "";
+          const relativeDir = dirname(session.relativePath);
+          const relativePath =
+            relativeDir === "."
+              ? `${baseName}${suffix}.md`
+              : join(relativeDir, `${baseName}${suffix}.md`);
+          const outputPath = join(output, relativePath);
 
-        // Render with provenance front matter and write
-        const markdown = renderTranscript(transcript, {
-          sourcePath: session.path,
-        });
-        await Bun.write(outputPath, markdown);
+          // Ensure output directory exists
+          await mkdir(dirname(outputPath), { recursive: true });
 
-        if (!quiet) {
-          console.error(`Synced: ${outputPath}`);
+          // Render with provenance front matter and write
+          const markdown = renderTranscript(transcript, {
+            sourcePath,
+          });
+          await Bun.write(outputPath, markdown);
+          newOutputs.push(relativePath);
+
+          // Update index
+          setEntry(index, relativePath, {
+            source: sourcePath,
+            sourceMtime: session.mtime,
+            sessionId,
+            segmentIndex,
+            syncedAt: new Date().toISOString(),
+          });
+
+          if (!quiet) {
+            console.error(`Synced: ${outputPath}`);
+          }
         }
-      }
 
-      result.synced++;
+        // Success: delete old output files (after new ones are written)
+        const oldFilenames = removedEntries.map((e) => e.filename);
+        // Only delete files that aren't being reused
+        const toDelete = oldFilenames.filter((f) => !newOutputs.includes(f));
+        if (toDelete.length > 0) {
+          await deleteOutputFiles(output, toDelete, quiet);
+        }
+
+        result.synced++;
+      } catch (error) {
+        // Clean up any newly written files before restoring old entries
+        if (newOutputs.length > 0) {
+          await deleteOutputFiles(output, newOutputs, quiet);
+        }
+        // Restore old entries on error to preserve provenance
+        restoreEntries(index, removedEntries);
+        throw error;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Error: ${session.relativePath}: ${message}`);
       result.errors++;
     }
   }
+
+  // Save index
+  await saveIndex(output, index);
 
   // Summary
   if (!quiet) {

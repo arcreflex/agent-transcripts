@@ -1,46 +1,8 @@
 /**
- * Render command: intermediate JSON → markdown
+ * Render: intermediate transcript format → markdown
  */
 
-import { basename, dirname, join } from "path";
-import { mkdir } from "fs/promises";
 import type { Transcript, Message, ToolCall } from "./types.ts";
-
-export interface RenderOptions {
-  input: string; // file path, or "-" for stdin
-  output?: string; // output path
-  head?: string; // render branch ending at this message ID
-}
-
-/**
- * Read transcript from file or stdin.
- */
-async function readTranscript(
-  input: string,
-): Promise<{ transcript: Transcript; path: string }> {
-  let content: string;
-  let path: string;
-
-  if (input !== "-") {
-    content = await Bun.file(input).text();
-    path = input;
-  } else {
-    const chunks: string[] = [];
-    const reader = Bun.stdin.stream().getReader();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(new TextDecoder().decode(value));
-    }
-
-    content = chunks.join("");
-    path = "<stdin>";
-  }
-
-  const transcript = JSON.parse(content) as Transcript;
-  return { transcript, path };
-}
 
 /**
  * Format a single tool call.
@@ -332,49 +294,4 @@ export function renderTranscript(
   }
 
   return lines.join("\n");
-}
-
-/**
- * Determine output path for markdown.
- */
-function getOutputPath(inputPath: string, outputOption?: string): string {
-  if (outputOption) {
-    // If it has an extension, use as-is
-    if (outputOption.match(/\.\w+$/)) {
-      return outputOption;
-    }
-    // Treat as directory
-    const base =
-      inputPath === "<stdin>"
-        ? "transcript"
-        : basename(inputPath).replace(/\.json$/, "");
-    return join(outputOption, `${base}.md`);
-  }
-
-  // Default: same name in cwd
-  const base =
-    inputPath === "<stdin>"
-      ? "transcript"
-      : basename(inputPath).replace(/\.json$/, "");
-  return join(process.cwd(), `${base}.md`);
-}
-
-/**
- * Render intermediate JSON to markdown.
- */
-export async function render(options: RenderOptions): Promise<void> {
-  const { transcript, path: inputPath } = await readTranscript(options.input);
-
-  const markdown = renderTranscript(transcript, options.head);
-
-  if (options.output) {
-    const outputPath = getOutputPath(inputPath, options.output);
-    // Ensure directory exists
-    await mkdir(dirname(outputPath), { recursive: true });
-    await Bun.write(outputPath, markdown);
-    console.error(`Wrote: ${outputPath}`);
-  } else {
-    // Default: print to stdout
-    console.log(markdown);
-  }
 }
