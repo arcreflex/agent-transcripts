@@ -275,9 +275,11 @@ main {
   position: relative;
 }
 
-/* User messages - boxed with background */
+/* User messages - boxed with background, extended to align content with assistant */
 .message.user {
   padding: 1rem 1.25rem;
+  margin-left: -1.25rem;
+  margin-right: -1.25rem;
   border-radius: 6px;
   background: var(--user-bg);
   border: 1px solid var(--user-border);
@@ -713,8 +715,13 @@ details.tool-call[open] > .tool-call-header::before {
   }
 
   .message {
-    padding: 0.875rem 1rem;
     margin: 1rem 0;
+  }
+
+  .message.user {
+    padding: 0.875rem 1rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
   }
 
   pre {
