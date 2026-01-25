@@ -99,8 +99,12 @@ interface TranscriptsIndex {
       sessionId: string; // full session ID from filename
       segmentIndex?: number; // for multi-transcript sources (1-indexed)
       syncedAt: string; // ISO timestamp
-      firstUserMessage?: string; // for display in index.html
+      firstUserMessage: string; // first user message content
       title?: string; // copied from cache for convenience
+      messageCount: number;
+      startTime: string; // ISO timestamp
+      endTime: string; // ISO timestamp
+      cwd?: string; // working directory
     };
   };
 }

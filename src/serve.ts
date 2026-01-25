@@ -30,6 +30,7 @@ interface SessionInfo {
   source: DiscoveredSession;
   adapter: Adapter;
   baseName: string; // e.g., "2024-01-15-1423-sessionid"
+  segmentIndex: number; // 0-indexed segment within multi-transcript source
 }
 
 /**
@@ -59,6 +60,7 @@ async function discoverSessions(
           source,
           adapter,
           baseName: fullName,
+          segmentIndex: i,
         };
 
         // Store by baseName for lookup
@@ -140,9 +142,8 @@ async function buildIndexEntries(
   const entries: SessionEntry[] = [];
 
   for (const [baseName, infos] of sessions) {
-    for (let i = 0; i < infos.length; i++) {
-      const info = infos[i];
-      const segmentIndex = i;
+    for (const info of infos) {
+      const { segmentIndex } = info;
 
       try {
         const content = await Bun.file(info.source.path).text();

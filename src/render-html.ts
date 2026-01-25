@@ -801,21 +801,11 @@ function contentToHtml(content: string): string {
   return html;
 }
 
-/**
- * Truncate text for display, keeping it readable.
- */
-function truncateText(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen) + "...";
-}
-
 // ============================================================================
 // Message Rendering
 // ============================================================================
 
 function renderToolCall(call: ToolCall): string {
-  const hasResult = call.result && call.result.length > 0;
-
   let headerContent = `<span class="tool-call-name">${escapeHtml(call.name)}</span>`;
   if (call.summary) {
     headerContent += `<span class="tool-call-summary">${escapeHtml(call.summary)}</span>`;
@@ -824,11 +814,11 @@ function renderToolCall(call: ToolCall): string {
     headerContent += `<span class="tool-call-error">${escapeHtml(call.error)}</span>`;
   }
 
-  if (hasResult) {
+  if (call.result && call.result.length > 0) {
     // Wrap in details/summary for expandable result
     return `<details class="tool-call">
   <summary class="tool-call-header">${headerContent}</summary>
-  <div class="tool-detail-content">${escapeHtml(call.result!)}</div>
+  <div class="tool-detail-content">${escapeHtml(call.result)}</div>
 </details>`;
   } else {
     // No result, just show the header

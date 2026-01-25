@@ -536,7 +536,7 @@ export function renderIndexFromSessions(
       <li class="session-item" data-title="${escapeHtml(session.title)}" data-preview="${escapeHtml(session.firstUserMessage)}" data-cwd="${escapeHtml(cwd)}">
         <a href="${escapeHtml(session.filename)}" class="session-link">
           <div class="session-title">${escapeHtml(session.title)}</div>
-          <div class="session-meta">${msgCount} msgs · ${dateRange}</div>
+          <div class="session-meta">${msgCount} msgs · ${escapeHtml(dateRange)}</div>
           ${preview ? `<div class="session-preview">${escapeHtml(preview)}</div>` : ""}
         </a>
       </li>`;
