@@ -471,9 +471,22 @@ function transformConversation(
     }
   }
 
-  const firstTimestamp = messages[0]?.timestamp || new Date().toISOString();
-  const lastTimestamp =
-    messages[messages.length - 1]?.timestamp || firstTimestamp;
+  // Compute time bounds from min/max across all messages (not array order,
+  // which is BFS traversal order and may not be chronological for branches)
+  let minTime = Infinity;
+  let maxTime = -Infinity;
+  for (const msg of messages) {
+    const t = new Date(msg.timestamp).getTime();
+    if (t < minTime) minTime = t;
+    if (t > maxTime) maxTime = t;
+  }
+  const now = new Date().toISOString();
+  const startTime = Number.isFinite(minTime)
+    ? new Date(minTime).toISOString()
+    : now;
+  const endTime = Number.isFinite(maxTime)
+    ? new Date(maxTime).toISOString()
+    : startTime;
 
   return {
     source: {
@@ -483,8 +496,8 @@ function transformConversation(
     metadata: {
       warnings,
       messageCount: messages.length,
-      startTime: firstTimestamp,
-      endTime: lastTimestamp,
+      startTime,
+      endTime,
       cwd,
     },
     messages,
