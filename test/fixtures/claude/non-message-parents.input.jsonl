@@ -1,0 +1,9 @@
+{"type": "user", "uuid": "msg-1", "message": {"role": "user", "content": "First message"}, "timestamp": "2024-01-15T10:00:00Z"}
+{"type": "assistant", "uuid": "msg-2", "parentUuid": "msg-1", "message": {"role": "assistant", "content": [{"type": "text", "text": "First response"}]}, "timestamp": "2024-01-15T10:00:05Z"}
+{"type": "progress", "uuid": "progress-1", "parentUuid": "msg-2", "content": "Processing...", "timestamp": "2024-01-15T10:00:10Z"}
+{"type": "user", "uuid": "msg-3", "parentUuid": "progress-1", "message": {"role": "user", "content": "Second message (parent is progress record)"}, "timestamp": "2024-01-15T10:00:15Z"}
+{"type": "assistant", "uuid": "msg-4", "parentUuid": "msg-3", "message": {"role": "assistant", "content": [{"type": "text", "text": "Second response"}]}, "timestamp": "2024-01-15T10:00:20Z"}
+{"type": "progress", "uuid": "progress-2", "parentUuid": "msg-4", "content": "More processing...", "timestamp": "2024-01-15T10:00:25Z"}
+{"type": "progress", "uuid": "progress-3", "parentUuid": "progress-2", "content": "Nested progress...", "timestamp": "2024-01-15T10:00:26Z"}
+{"type": "user", "uuid": "msg-5", "parentUuid": "progress-3", "message": {"role": "user", "content": "Third message (parent is nested progress)"}, "timestamp": "2024-01-15T10:00:30Z"}
+{"type": "assistant", "uuid": "msg-6", "parentUuid": "msg-5", "message": {"role": "assistant", "content": [{"type": "text", "text": "Third response"}]}, "timestamp": "2024-01-15T10:00:35Z"}

@@ -10,6 +10,10 @@ export interface Transcript {
   };
   metadata: {
     warnings: Warning[];
+    messageCount: number;
+    startTime: string; // ISO timestamp of first message
+    endTime: string; // ISO timestamp of last message
+    cwd?: string; // Working directory (if known)
   };
   messages: Message[];
 }
@@ -31,6 +35,7 @@ interface BaseMessage {
   sourceRef: string;
   timestamp: string;
   parentMessageRef?: string; // UUID of parent message (for tree reconstruction)
+  rawJson?: string; // Original JSON for raw view toggle
 }
 
 export interface UserMessage extends BaseMessage {
@@ -57,6 +62,8 @@ export interface ToolCallGroup extends BaseMessage {
 export interface ToolCall {
   name: string;
   summary: string;
+  input?: Record<string, unknown>;
+  result?: string;
   error?: string;
 }
 

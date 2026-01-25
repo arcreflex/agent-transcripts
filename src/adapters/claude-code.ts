@@ -44,6 +44,7 @@ interface ClaudeRecord {
   };
   content?: string;
   subtype?: string;
+  cwd?: string;
 }
 
 interface ContentBlock {
@@ -54,7 +55,7 @@ interface ContentBlock {
   name?: string;
   input?: Record<string, unknown>;
   tool_use_id?: string;
-  content?: string;
+  content?: unknown; // Can be string, array, or other structure
 }
 
 /**
@@ -87,10 +88,36 @@ function parseJsonl(content: string): {
 }
 
 /**
- * Build message graph and find conversation boundaries.
- * Returns array of conversation groups (each is array of records in order).
+ * Find the nearest message ancestor by walking up the parent chain.
+ * Returns undefined if no message ancestor exists.
  */
-function splitConversations(records: ClaudeRecord[]): ClaudeRecord[][] {
+function findMessageAncestor(
+  parentUuid: string | null | undefined,
+  allByUuid: Map<string, ClaudeRecord>,
+  messageUuids: Set<string>,
+): string | undefined {
+  let current = parentUuid;
+  while (current) {
+    if (messageUuids.has(current)) {
+      return current;
+    }
+    const rec = allByUuid.get(current);
+    current = rec?.parentUuid ?? null;
+  }
+  return undefined;
+}
+
+interface SplitResult {
+  conversations: ClaudeRecord[][];
+  /** Map from message UUID to its resolved parent (nearest message ancestor) */
+  resolvedParents: Map<string, string | undefined>;
+}
+
+/**
+ * Build message graph and find conversation boundaries.
+ * Returns conversations and a map of resolved parent references.
+ */
+function splitConversations(records: ClaudeRecord[]): SplitResult {
   // Filter to only message records (user, assistant, system with uuid)
   const messageRecords = records.filter(
     (r) =>
@@ -98,29 +125,52 @@ function splitConversations(records: ClaudeRecord[]): ClaudeRecord[][] {
       (r.type === "user" || r.type === "assistant" || r.type === "system"),
   );
 
-  if (messageRecords.length === 0) return [];
+  if (messageRecords.length === 0) {
+    return { conversations: [], resolvedParents: new Map() };
+  }
 
-  // Build parent → children map
-  const byUuid = new Map<string, ClaudeRecord>();
-  const children = new Map<string, string[]>();
-
-  for (const rec of messageRecords) {
+  // Build UUID lookup for ALL records to track parent chains through non-messages
+  const allByUuid = new Map<string, ClaudeRecord>();
+  for (const rec of records) {
     if (rec.uuid) {
-      byUuid.set(rec.uuid, rec);
-      const parent = rec.parentUuid;
-      if (parent) {
-        const existing = children.get(parent) || [];
-        existing.push(rec.uuid);
-        children.set(parent, existing);
-      }
+      allByUuid.set(rec.uuid, rec);
     }
   }
 
-  // Find roots (no parent or parent not in our set)
-  const roots: string[] = [];
+  // Set of message UUIDs for quick lookup
+  const messageUuids = new Set<string>();
   for (const rec of messageRecords) {
-    if (!rec.parentUuid || !byUuid.has(rec.parentUuid)) {
-      if (rec.uuid) roots.push(rec.uuid);
+    if (rec.uuid) messageUuids.add(rec.uuid);
+  }
+
+  // Build parent → children map, resolving through non-message records
+  // Also track resolved parents for use in transformation
+  const byUuid = new Map<string, ClaudeRecord>();
+  const children = new Map<string, string[]>();
+  const resolvedParents = new Map<string, string | undefined>();
+  const roots: string[] = [];
+
+  for (const rec of messageRecords) {
+    if (!rec.uuid) continue;
+    byUuid.set(rec.uuid, rec);
+
+    // Find nearest message ancestor (walking through non-message records)
+    const ancestor = findMessageAncestor(
+      rec.parentUuid,
+      allByUuid,
+      messageUuids,
+    );
+
+    // Store resolved parent for this message
+    resolvedParents.set(rec.uuid, ancestor);
+
+    if (ancestor) {
+      const existing = children.get(ancestor) || [];
+      existing.push(rec.uuid);
+      children.set(ancestor, existing);
+    } else {
+      // No message ancestor - this is a root
+      roots.push(rec.uuid);
     }
   }
 
@@ -160,7 +210,7 @@ function splitConversations(records: ClaudeRecord[]): ClaudeRecord[][] {
     return ta - tb;
   });
 
-  return conversations;
+  return { conversations, resolvedParents };
 }
 
 /**
@@ -189,21 +239,61 @@ function extractThinking(content: string | ContentBlock[]): string | undefined {
 
 /**
  * Extract tool calls from content blocks.
+ * Matches with results from the toolResults map.
  */
-function extractToolCalls(content: string | ContentBlock[]): ToolCall[] {
+function extractToolCalls(
+  content: string | ContentBlock[],
+  toolResults: Map<string, string>,
+): ToolCall[] {
   if (typeof content === "string") return [];
 
   return content.flatMap((b) => {
-    if (b.type === "tool_use" && b.name) {
+    if (b.type === "tool_use" && b.name && b.id) {
+      const result = toolResults.get(b.id);
       return [
         {
           name: b.name,
           summary: extractToolSummary(b.name, b.input || {}),
+          input: b.input,
+          result,
         },
       ];
     }
     return [];
   });
+}
+
+/**
+ * Safely convert tool result content to string.
+ * Content can be a string, array, or other structure.
+ */
+function stringifyToolResult(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  // For arrays or objects, JSON stringify for display
+  try {
+    return JSON.stringify(content, null, 2);
+  } catch {
+    return String(content);
+  }
+}
+
+/**
+ * Extract tool results from content blocks.
+ * Returns a map of tool_use_id → result content.
+ */
+function extractToolResults(
+  content: string | ContentBlock[],
+): Map<string, string> {
+  const results = new Map<string, string>();
+  if (typeof content === "string") return results;
+
+  for (const b of content) {
+    if (b.type === "tool_result" && b.tool_use_id && b.content !== undefined) {
+      results.set(b.tool_use_id, stringifyToolResult(b.content));
+    }
+  }
+  return results;
 }
 
 /**
@@ -245,16 +335,35 @@ function transformConversation(
   records: ClaudeRecord[],
   sourcePath: string,
   warnings: Warning[],
+  resolvedParents: Map<string, string | undefined>,
 ): Transcript {
   const messages: Message[] = [];
-  // Track skipped message UUIDs → their parent UUIDs for chain repair
+  // Track skipped message UUIDs → their resolved parent UUIDs for chain repair
   const skippedParents = new Map<string, string | undefined>();
+
+  // Collect all tool results from user messages (tool_use_id → result)
+  const allToolResults = new Map<string, string>();
+  for (const rec of records) {
+    if (rec.type === "user" && rec.message) {
+      const results = extractToolResults(rec.message.content);
+      for (const [id, content] of results) {
+        allToolResults.set(id, content);
+      }
+    }
+  }
+
+  let cwd: string | undefined;
 
   // First pass: identify which messages will be skipped
   for (const rec of records) {
     if (!rec.uuid) continue;
 
     let willSkip = false;
+
+    // Take the first cwd we find.
+    if (!cwd && rec.cwd) {
+      cwd = rec.cwd;
+    }
 
     if (rec.type === "user" && rec.message) {
       if (isToolResultOnly(rec.message.content)) {
@@ -266,7 +375,7 @@ function transformConversation(
     } else if (rec.type === "assistant" && rec.message) {
       const text = extractText(rec.message.content);
       const thinking = extractThinking(rec.message.content);
-      const toolCalls = extractToolCalls(rec.message.content);
+      const toolCalls = extractToolCalls(rec.message.content, allToolResults);
       // Only skip if no text, no thinking, AND no tool calls
       if (!text.trim() && !thinking && toolCalls.length === 0) {
         willSkip = true;
@@ -277,7 +386,8 @@ function transformConversation(
     }
 
     if (willSkip) {
-      skippedParents.set(rec.uuid, rec.parentUuid || undefined);
+      // Use the resolved parent (already walked through non-message records)
+      skippedParents.set(rec.uuid, resolvedParents.get(rec.uuid));
     }
   }
 
@@ -285,7 +395,12 @@ function transformConversation(
   for (const rec of records) {
     const sourceRef = rec.uuid || "";
     const timestamp = rec.timestamp || new Date().toISOString();
-    const parentMessageRef = resolveParent(rec.parentUuid, skippedParents);
+    // Start with the resolved parent (through non-message records),
+    // then walk through any skipped messages
+    const parentMessageRef = rec.uuid
+      ? resolveParent(resolvedParents.get(rec.uuid), skippedParents)
+      : undefined;
+    const rawJson = JSON.stringify(rec);
 
     if (rec.type === "user" && rec.message) {
       // Skip tool-result-only user messages (they're just tool responses)
@@ -298,13 +413,14 @@ function transformConversation(
           sourceRef,
           timestamp,
           parentMessageRef,
+          rawJson,
           content: text,
         });
       }
     } else if (rec.type === "assistant" && rec.message) {
       const text = extractText(rec.message.content);
       const thinking = extractThinking(rec.message.content);
-      const toolCalls = extractToolCalls(rec.message.content);
+      const toolCalls = extractToolCalls(rec.message.content, allToolResults);
 
       // Add assistant message if there's text or thinking
       if (text.trim() || thinking) {
@@ -313,6 +429,7 @@ function transformConversation(
           sourceRef,
           timestamp,
           parentMessageRef,
+          rawJson,
           content: text,
           thinking,
         });
@@ -325,6 +442,7 @@ function transformConversation(
           sourceRef,
           timestamp,
           parentMessageRef,
+          rawJson,
           calls: toolCalls,
         });
       }
@@ -336,18 +454,29 @@ function transformConversation(
           sourceRef,
           timestamp,
           parentMessageRef,
+          rawJson,
           content: text,
         });
       }
     }
   }
 
+  const firstTimestamp = messages[0]?.timestamp || new Date().toISOString();
+  const lastTimestamp =
+    messages[messages.length - 1]?.timestamp || firstTimestamp;
+
   return {
     source: {
       file: sourcePath,
       adapter: "claude-code",
     },
-    metadata: { warnings },
+    metadata: {
+      warnings,
+      messageCount: messages.length,
+      startTime: firstTimestamp,
+      endTime: lastTimestamp,
+      cwd,
+    },
     messages,
   };
 }
@@ -435,14 +564,21 @@ export const claudeCodeAdapter: Adapter = {
 
   parse(content: string, sourcePath: string): Transcript[] {
     const { records, warnings } = parseJsonl(content);
-    const conversations = splitConversations(records);
+    const { conversations, resolvedParents } = splitConversations(records);
 
     if (conversations.length === 0) {
       // Return single empty transcript with warnings
+      const now = new Date().toISOString();
       return [
         {
           source: { file: sourcePath, adapter: "claude-code" },
-          metadata: { warnings },
+          metadata: {
+            warnings,
+            messageCount: 0,
+            startTime: now,
+            endTime: now,
+            cwd: undefined,
+          },
           messages: [],
         },
       ];
@@ -450,12 +586,24 @@ export const claudeCodeAdapter: Adapter = {
 
     // For single conversation, include all warnings
     if (conversations.length === 1) {
-      return [transformConversation(conversations[0], sourcePath, warnings)];
+      return [
+        transformConversation(
+          conversations[0],
+          sourcePath,
+          warnings,
+          resolvedParents,
+        ),
+      ];
     }
 
     // For multiple conversations, only first gets warnings
     return conversations.map((conv, i) =>
-      transformConversation(conv, sourcePath, i === 0 ? warnings : []),
+      transformConversation(
+        conv,
+        sourcePath,
+        i === 0 ? warnings : [],
+        resolvedParents,
+      ),
     );
   },
 };
