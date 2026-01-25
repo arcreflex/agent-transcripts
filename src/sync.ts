@@ -1,31 +1,49 @@
 /**
- * Sync command: batch export sessions to markdown transcripts.
+ * Sync command: batch export sessions to transcripts.
  *
  * Discovers session files in source directory, parses them,
- * and writes rendered markdown to output directory.
+ * and writes rendered output (markdown or HTML) to output directory.
  * Tracks provenance via transcripts.json index.
  */
 
 import { dirname, join } from "path";
 import { mkdir } from "fs/promises";
+import { existsSync } from "fs";
 import { getAdapters } from "./adapters/index.ts";
-import type { Adapter, DiscoveredSession } from "./types.ts";
+import type { Adapter, DiscoveredSession, Transcript } from "./types.ts";
 import { renderTranscript } from "./render.ts";
+import { renderTranscriptHtml } from "./render-html.ts";
+import { renderIndex } from "./render-index.ts";
 import { generateOutputName, extractSessionId } from "./utils/naming.ts";
 import {
   loadIndex,
   saveIndex,
-  isStale,
   setEntry,
   removeEntriesForSource,
   restoreEntries,
   deleteOutputFiles,
   normalizeSourcePath,
+  extractFirstUserMessage,
+  getOutputsForSource,
+  type TranscriptsIndex,
 } from "./utils/provenance.ts";
+import { generateTitles } from "./title.ts";
+import {
+  computeContentHash,
+  loadCache,
+  saveCache,
+  getCachedSegments,
+  type CacheEntry,
+  type SegmentCache,
+} from "./cache.ts";
+
+export type OutputFormat = "md" | "html";
 
 export interface SyncOptions {
   source: string;
   output: string;
+  format?: OutputFormat;
+  noTitle?: boolean;
   force?: boolean;
   quiet?: boolean;
 }
@@ -41,11 +59,49 @@ interface SessionFile extends DiscoveredSession {
 }
 
 /**
+ * Render a transcript to the specified format.
+ */
+function renderToFormat(
+  transcript: Transcript,
+  format: OutputFormat,
+  options: { sourcePath?: string; title?: string },
+): string {
+  if (format === "html") {
+    return renderTranscriptHtml(transcript, { title: options.title });
+  }
+  return renderTranscript(transcript, { sourcePath: options.sourcePath });
+}
+
+/**
+ * Generate index.html for HTML output.
+ */
+async function writeIndexHtml(
+  outputDir: string,
+  index: TranscriptsIndex,
+  quiet: boolean,
+): Promise<void> {
+  const indexHtml = renderIndex(index);
+  const indexPath = join(outputDir, "index.html");
+  await Bun.write(indexPath, indexHtml);
+  if (!quiet) {
+    console.error(`Generated: ${indexPath}`);
+  }
+}
+
+/**
  * Sync session files from source to output directory.
  */
 export async function sync(options: SyncOptions): Promise<SyncResult> {
-  const { source, output, force = false, quiet = false } = options;
+  const {
+    source,
+    output,
+    format = "md",
+    noTitle = false,
+    force = false,
+    quiet = false,
+  } = options;
 
+  const ext = format === "html" ? ".html" : ".md";
   const result: SyncResult = { synced: 0, skipped: 0, errors: 0 };
 
   // Ensure output directory exists
@@ -78,22 +134,32 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
     const sourcePath = normalizeSourcePath(session.path);
 
     try {
-      // Read and parse using the adapter that discovered this file
+      // Read source and compute content hash
       const content = await Bun.file(session.path).text();
-      const transcripts = session.adapter.parse(content, session.path);
+      const contentHash = computeContentHash(content);
 
-      // Check if sync needed (force or stale)
-      const needsUpdate =
-        force ||
-        isStale(index, sourcePath, session.mtime, transcripts.length, output);
+      // Check cache
+      const cached = await loadCache(sourcePath);
+      const cachedSegments = getCachedSegments(cached, contentHash, format);
 
-      if (!needsUpdate) {
+      // Check if we can use cached output
+      const existingOutputs = getOutputsForSource(index, sourcePath);
+      const outputsExist =
+        existingOutputs.length > 0 &&
+        existingOutputs.every((f) => existsSync(join(output, f)));
+
+      if (!force && cachedSegments && outputsExist) {
+        // Cache hit and outputs exist - skip
         if (!quiet) {
           console.error(`Skip (up to date): ${session.relativePath}`);
         }
         result.skipped++;
         continue;
       }
+
+      // Need to sync: either cache miss, content changed, or force
+      // Parse the source
+      const transcripts = session.adapter.parse(content, session.path);
 
       // Remove entries from index (save for potential restoration on error)
       const removedEntries = removeEntriesForSource(index, sourcePath);
@@ -102,11 +168,20 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
       const newOutputs: string[] = [];
       const sessionId = extractSessionId(session.path);
 
+      // Build new cache entry
+      const newCache: CacheEntry = {
+        contentHash,
+        segments: [],
+      };
+
       try {
         // Generate fresh outputs for all transcripts
         for (let i = 0; i < transcripts.length; i++) {
           const transcript = transcripts[i];
           const segmentIndex = transcripts.length > 1 ? i + 1 : undefined;
+
+          // Extract first user message
+          const firstUserMessage = extractFirstUserMessage(transcript);
 
           // Generate deterministic name
           const baseName = generateOutputName(transcript, session.path);
@@ -114,33 +189,53 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
           const relativeDir = dirname(session.relativePath);
           const relativePath =
             relativeDir === "."
-              ? `${baseName}${suffix}.md`
-              : join(relativeDir, `${baseName}${suffix}.md`);
+              ? `${baseName}${suffix}${ext}`
+              : join(relativeDir, `${baseName}${suffix}${ext}`);
           const outputPath = join(output, relativePath);
 
           // Ensure output directory exists
           await mkdir(dirname(outputPath), { recursive: true });
 
-          // Render with provenance front matter and write
-          const markdown = renderTranscript(transcript, {
+          // Preserve title from cache if content unchanged
+          const cachedTitle =
+            cached?.contentHash === contentHash
+              ? cached.segments[i]?.title
+              : undefined;
+
+          // Render and write
+          const rendered = renderToFormat(transcript, format, {
             sourcePath,
+            title: cachedTitle,
           });
-          await Bun.write(outputPath, markdown);
+          await Bun.write(outputPath, rendered);
           newOutputs.push(relativePath);
+
+          // Build segment cache
+          const segmentCache: SegmentCache = { title: cachedTitle };
+          segmentCache[format] = rendered;
+          newCache.segments.push(segmentCache);
 
           // Update index
           setEntry(index, relativePath, {
             source: sourcePath,
-            sourceMtime: session.mtime,
             sessionId,
             segmentIndex,
             syncedAt: new Date().toISOString(),
+            firstUserMessage,
+            title: cachedTitle,
+            messageCount: transcript.metadata.messageCount,
+            startTime: transcript.metadata.startTime,
+            endTime: transcript.metadata.endTime,
+            cwd: transcript.metadata.cwd,
           });
 
           if (!quiet) {
             console.error(`Synced: ${outputPath}`);
           }
         }
+
+        // Save cache
+        await saveCache(sourcePath, newCache);
 
         // Success: delete old output files (after new ones are written)
         const oldFilenames = removedEntries.map((e) => e.filename);
@@ -169,6 +264,22 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
 
   // Save index
   await saveIndex(output, index);
+
+  // Generate titles for HTML format (unless --no-title)
+  if (format === "html" && !noTitle) {
+    if (!quiet) {
+      console.error("\nGenerating titles...");
+    }
+    await generateTitles({ outputDir: output, quiet });
+
+    // Reload index after title generation and regenerate index.html
+    const updatedIndex = await loadIndex(output);
+    await writeIndexHtml(output, updatedIndex, quiet);
+  } else if (format === "html") {
+    // Generate index.html without titles
+    const updatedIndex = await loadIndex(output);
+    await writeIndexHtml(output, updatedIndex, quiet);
+  }
 
   // Summary
   if (!quiet) {
