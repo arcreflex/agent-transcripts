@@ -82,9 +82,20 @@ async function getSessionHtml(
   session: SessionInfo,
   segmentIndex: number,
   noCache = false,
-): Promise<{ html: string; transcript: Transcript; contentHash: string }> {
+): Promise<{
+  html: string;
+  transcript: Transcript;
+  contentHash: string;
+} | null> {
   const content = await Bun.file(session.source.path).text();
   const contentHash = computeContentHash(content);
+
+  // Parse first to validate segment index
+  const transcripts = session.adapter.parse(content, session.source.path);
+  if (segmentIndex < 0 || segmentIndex >= transcripts.length) {
+    return null;
+  }
+  const transcript = transcripts[segmentIndex];
 
   // Check cache (unless bypassing for dev)
   const cached = await loadCache(session.source.path);
@@ -92,19 +103,9 @@ async function getSessionHtml(
     const cachedSegments = getCachedSegments(cached, contentHash, "html");
     const cachedHtml = cachedSegments?.[segmentIndex]?.html;
     if (cachedHtml) {
-      // Cache hit - but we still need transcript for metadata
-      const transcripts = session.adapter.parse(content, session.source.path);
-      return {
-        html: cachedHtml,
-        transcript: transcripts[segmentIndex],
-        contentHash,
-      };
+      return { html: cachedHtml, transcript, contentHash };
     }
   }
-
-  // Cache miss (or bypassed) - parse and render
-  const transcripts = session.adapter.parse(content, session.source.path);
-  const transcript = transcripts[segmentIndex];
 
   // Still use cached title if available
   const title =
@@ -228,12 +229,20 @@ export async function serve(options: ServeOptions): Promise<void> {
       if (path.endsWith(".html")) {
         const baseName = path.slice(1, -5); // Remove leading "/" and ".html"
 
-        // First try exact match (segment index is always 0 for exact matches)
+        // First try exact match
         const exactInfos = sessions.get(baseName);
         if (exactInfos && exactInfos.length > 0) {
           try {
-            const { html } = await getSessionHtml(exactInfos[0], 0, noCache);
-            return new Response(html, {
+            const info = exactInfos[0];
+            const result = await getSessionHtml(
+              info,
+              info.segmentIndex,
+              noCache,
+            );
+            if (!result) {
+              return new Response("Not Found", { status: 404 });
+            }
+            return new Response(result.html, {
               headers: { "Content-Type": "text/html; charset=utf-8" },
             });
           } catch (error) {
@@ -243,19 +252,24 @@ export async function serve(options: ServeOptions): Promise<void> {
           }
         }
 
-        // Only parse segment suffix when falling back (e.g., "name_2" → segment 1)
+        // Fallback: parse segment suffix (e.g., "name_2" → base "name" + segment 1)
+        // Handles case where URL has suffix but session was stored without it
         const segmentMatch = baseName.match(/^(.+)_(\d+)$/);
         if (segmentMatch) {
           const lookupName = segmentMatch[1];
           const segmentIndex = parseInt(segmentMatch[2], 10) - 1;
           const infos = sessions.get(lookupName);
-          if (infos && infos.length > 0) {
+          if (infos && infos.length > 0 && segmentIndex >= 0) {
             try {
-              const { html } = await getSessionHtml(
+              const result = await getSessionHtml(
                 infos[0],
                 segmentIndex,
                 noCache,
               );
+              if (!result) {
+                return new Response("Not Found", { status: 404 });
+              }
+              const { html } = result;
               return new Response(html, {
                 headers: { "Content-Type": "text/html; charset=utf-8" },
               });

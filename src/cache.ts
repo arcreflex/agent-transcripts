@@ -72,7 +72,7 @@ export async function saveCache(
   await ensureCacheDir();
 
   const cachePath = getCachePath(sourcePath);
-  const tmpPath = `${cachePath}.tmp`;
+  const tmpPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
 
   const content = JSON.stringify(entry, null, 2) + "\n";
   await Bun.write(tmpPath, content);

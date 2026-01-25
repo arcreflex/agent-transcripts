@@ -96,8 +96,13 @@ function findMessageAncestor(
   allByUuid: Map<string, ClaudeRecord>,
   messageUuids: Set<string>,
 ): string | undefined {
+  const visited = new Set<string>();
   let current = parentUuid;
   while (current) {
+    if (visited.has(current)) {
+      return undefined; // Cycle detected
+    }
+    visited.add(current);
     if (messageUuids.has(current)) {
       return current;
     }
@@ -320,8 +325,13 @@ function resolveParent(
   if (!parentUuid) return undefined;
 
   // Follow the chain through any skipped messages
+  const visited = new Set<string>();
   let current: string | undefined = parentUuid;
   while (current && skippedParents.has(current)) {
+    if (visited.has(current)) {
+      return undefined; // Cycle detected
+    }
+    visited.add(current);
     current = skippedParents.get(current);
   }
 
