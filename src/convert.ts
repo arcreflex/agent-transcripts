@@ -18,6 +18,7 @@ import {
   deleteOutputFiles,
   setEntry,
   normalizeSourcePath,
+  extractFirstUserMessage,
 } from "./utils/provenance.ts";
 
 export interface ConvertToDirectoryOptions {
@@ -55,19 +56,6 @@ export async function convertToDirectory(
   const removedEntries =
     sourcePath !== "<stdin>" ? removeEntriesForSource(index, sourcePath) : [];
 
-  // Get source mtime for index entry
-  let sourceMtime = Date.now();
-  if (sourcePath !== "<stdin>") {
-    try {
-      const stat = await Bun.file(sourcePath).stat();
-      if (stat) {
-        sourceMtime = stat.mtime.getTime();
-      }
-    } catch {
-      // Use current time as fallback
-    }
-  }
-
   const sessionId = extractSessionId(inputPath);
   const newOutputs: string[] = [];
 
@@ -95,10 +83,14 @@ export async function convertToDirectory(
       if (sourcePath !== "<stdin>") {
         setEntry(index, relativePath, {
           source: sourcePath,
-          sourceMtime,
           sessionId,
           segmentIndex,
           syncedAt: new Date().toISOString(),
+          firstUserMessage: extractFirstUserMessage(transcript),
+          messageCount: transcript.metadata.messageCount,
+          startTime: transcript.metadata.startTime,
+          endTime: transcript.metadata.endTime,
+          cwd: transcript.metadata.cwd,
         });
       }
 

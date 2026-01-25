@@ -6,7 +6,6 @@
  */
 
 import { join, resolve } from "path";
-import { existsSync } from "fs";
 import { rename, unlink } from "fs/promises";
 
 const INDEX_FILENAME = "transcripts.json";
@@ -17,10 +16,15 @@ const INDEX_FILENAME = "transcripts.json";
 
 export interface TranscriptEntry {
   source: string; // absolute path to source
-  sourceMtime: number; // ms since epoch
   sessionId: string; // full session ID from source filename
   segmentIndex?: number; // for multi-transcript sources (1-indexed)
   syncedAt: string; // ISO timestamp
+  firstUserMessage: string; // first user message content (for display)
+  title?: string; // copied from cache for index.html convenience
+  messageCount: number;
+  startTime: string; // ISO timestamp
+  endTime: string; // ISO timestamp
+  cwd?: string;
 }
 
 export interface TranscriptsIndex {
@@ -121,45 +125,6 @@ export function getOutputsForSource(
 }
 
 /**
- * Check if outputs for a source are stale.
- * Returns true if:
- * - No outputs exist for this source
- * - Output count doesn't match expected
- * - Any output file is missing from disk
- * - Source mtime is newer than recorded mtime
- */
-export function isStale(
-  index: TranscriptsIndex,
-  sourcePath: string,
-  sourceMtime: number,
-  expectedCount: number,
-  outputDir: string,
-): boolean {
-  const outputs = getOutputsForSource(index, sourcePath);
-
-  if (outputs.length !== expectedCount) {
-    return true;
-  }
-
-  // Check if outputs actually exist on disk
-  for (const filename of outputs) {
-    if (!existsSync(join(outputDir, filename))) {
-      return true;
-    }
-  }
-
-  // Check if source has been modified since last sync
-  for (const filename of outputs) {
-    const entry = index.entries[filename];
-    if (entry && entry.sourceMtime < sourceMtime) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
  * Set or update an entry in the index.
  * outputPath should be relative to the output directory.
  */
@@ -225,4 +190,23 @@ export async function deleteOutputFiles(
       console.error(`Warning: could not delete ${fullPath}: ${msg}`);
     }
   }
+}
+
+// ============================================================================
+// Transcript Metadata Extraction
+// ============================================================================
+
+import type { Transcript } from "../types.ts";
+
+/**
+ * Extract the first user message from a transcript.
+ * Returns empty string if no user message found.
+ */
+export function extractFirstUserMessage(transcript: Transcript): string {
+  for (const msg of transcript.messages) {
+    if (msg.type === "user") {
+      return msg.content;
+    }
+  }
+  return "";
 }
