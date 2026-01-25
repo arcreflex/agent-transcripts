@@ -17,6 +17,8 @@ src/
   render.ts       # Intermediate format → markdown
   convert.ts      # Full pipeline with provenance tracking
   sync.ts         # Batch sync sessions → markdown
+  serve.ts        # HTTP server for dynamic transcript serving
+  cache.ts        # Content-hash-based caching (~/.cache/agent-transcripts/)
   types.ts        # Core types (Transcript, Message, Adapter)
   adapters/       # Source format adapters (currently: claude-code)
   utils/
@@ -43,6 +45,8 @@ bun run format       # auto-format
 agent-transcripts convert <file>              # Parse and render to stdout
 agent-transcripts convert <file> -o <dir>     # Parse and render to directory
 agent-transcripts sync <dir> -o <out>         # Batch sync sessions
+agent-transcripts serve <dir>                 # Serve transcripts via HTTP
+agent-transcripts serve <dir> -p 8080         # Serve on custom port
 
 # Use "-" for stdin
 cat session.jsonl | agent-transcripts -
@@ -58,11 +62,33 @@ Two-stage pipeline: Parse (source → intermediate) → Render (intermediate →
 - Provenance tracking via `transcripts.json` index + YAML front matter
 - Deterministic naming: `{datetime}-{sessionId}.md`
 - Sync uses sessions-index.json for discovery (claude-code), skipping subagent files
-- Sync uses mtime via index to skip unchanged sources
+- Sync uses content hash to skip unchanged sources (see Cache section)
+
+### Cache
+
+Derived content (rendered outputs, LLM-generated titles) is cached at `~/.cache/agent-transcripts/`:
+
+```
+~/.cache/agent-transcripts/
+  {source-path-hash}.json  →  CacheEntry
+```
+
+```typescript
+interface CacheEntry {
+  contentHash: string; // hash of source content (invalidation key)
+  segments: Array<{
+    title?: string; // LLM-generated title
+    html?: string; // rendered HTML
+    md?: string; // rendered markdown
+  }>;
+}
+```
+
+Cache is keyed by source path (hashed), invalidated by content hash. When source content changes, all cached data is invalidated and regenerated.
 
 ### transcripts.json
 
-The index file tracks the relationship between source files and outputs:
+The index file is a table of contents for the output directory:
 
 ```typescript
 interface TranscriptsIndex {
@@ -70,10 +96,11 @@ interface TranscriptsIndex {
   entries: {
     [outputFilename: string]: {
       source: string; // absolute path to source
-      sourceMtime: number; // ms since epoch
       sessionId: string; // full session ID from filename
       segmentIndex?: number; // for multi-transcript sources (1-indexed)
       syncedAt: string; // ISO timestamp
+      firstUserMessage?: string; // for display in index.html
+      title?: string; // copied from cache for convenience
     };
   };
 }

@@ -2,6 +2,10 @@
 
 @README.md
 
+## Architectural Notes
+
+- **Source paths are stable**: Session source paths (e.g., `~/.claude/projects/.../sessions/`) are standardized by the tools that create them. Don't over-engineer for path changes—use source paths as cache keys directly.
+
 ## Verification
 
 Before committing:
