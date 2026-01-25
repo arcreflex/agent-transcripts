@@ -371,6 +371,7 @@ const INDEX_SCRIPT = `
   const searchInput = document.getElementById('search');
   const sessionList = document.getElementById('sessions');
   const items = sessionList.querySelectorAll('.session-item');
+  const groups = sessionList.querySelectorAll('.session-group');
   const noResults = document.getElementById('no-results');
 
   searchInput.addEventListener('input', function() {
@@ -388,6 +389,12 @@ const INDEX_SCRIPT = `
       } else {
         item.classList.add('hidden');
       }
+    });
+
+    // Hide groups with no visible items
+    groups.forEach(function(group) {
+      const visibleItems = group.querySelectorAll('.session-item:not(.hidden)');
+      group.classList.toggle('hidden', visibleItems.length === 0);
     });
 
     if (visibleCount === 0 && query) {
