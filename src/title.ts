@@ -143,7 +143,7 @@ export async function generateTitles(
 
         // Re-render HTML with title if this is an HTML file
         if (filename.endsWith(".html")) {
-          const html = renderTranscriptHtml(transcript, { title });
+          const html = await renderTranscriptHtml(transcript, { title });
           const outputPath = join(outputDir, filename);
           await Bun.write(outputPath, html);
           newCache.segments[segmentIndex].html = html;

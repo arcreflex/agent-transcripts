@@ -10,6 +10,20 @@
  */
 
 import type { Transcript, Message, ToolCall } from "./types.ts";
+import { createHighlighter, type Highlighter } from "shiki";
+
+// Lazy-loaded shiki highlighter
+let highlighter: Highlighter | null = null;
+
+async function getHighlighter(): Promise<Highlighter> {
+  if (!highlighter) {
+    highlighter = await createHighlighter({
+      themes: ["ayu-dark", "github-light"],
+      langs: ["markdown", "javascript", "typescript", "python", "bash", "json"],
+    });
+  }
+  return highlighter;
+}
 
 // ============================================================================
 // Styles - Terminal Chronicle Theme
@@ -369,6 +383,27 @@ main {
   font-size: 0.9375rem;
   line-height: 1.7;
   color: var(--fg);
+}
+
+/* Shiki syntax highlighting - dual theme support */
+.content .shiki,
+.thinking .shiki {
+  background: transparent !important;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.content .shiki span,
+.thinking .shiki span {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  .content .shiki span,
+  .thinking .shiki span {
+    color: var(--shiki-dark);
+  }
 }
 
 .content p {
@@ -768,35 +803,20 @@ function formatJson(obj: unknown): string {
 }
 
 /**
- * Convert markdown-ish content to HTML.
- * Handles: code blocks, inline code, basic formatting.
+ * Convert markdown content to syntax-highlighted HTML.
+ * Uses shiki to highlight markdown, preserving the raw markdown structure
+ * while making it visually distinct (code blocks, inline code, etc.).
  */
-function contentToHtml(content: string): string {
-  let html = escapeHtml(content);
-
-  // Code blocks: ```lang\n...\n```
-  html = html.replace(
-    /```(\w*)\n([\s\S]*?)```/g,
-    (_match, lang, code) =>
-      `<pre><code class="language-${lang}">${code.trim()}</code></pre>`,
-  );
-
-  // Inline code: `...`
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  // Convert newlines to <br> for non-code content
-  // Split by pre blocks, process non-code parts
-  const parts = html.split(/(<pre>[\s\S]*?<\/pre>)/);
-  html = parts
-    .map((part) => {
-      if (part.startsWith("<pre>")) return part;
-      // Preserve paragraph breaks (double newline)
-      return part
-        .split(/\n\n+/)
-        .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
-        .join("");
-    })
-    .join("");
+async function contentToHtml(content: string): Promise<string> {
+  const hl = await getHighlighter();
+  const html = hl.codeToHtml(content, {
+    lang: "markdown",
+    themes: {
+      light: "github-light",
+      dark: "ayu-dark",
+    },
+    defaultColor: false, // Use CSS variables for theme switching
+  });
 
   return html;
 }
@@ -836,7 +856,10 @@ interface RenderContext {
   showAssistantHeader: boolean;
 }
 
-function renderMessage(msg: Message, ctx: RenderContext): string {
+async function renderMessage(
+  msg: Message,
+  ctx: RenderContext,
+): Promise<string> {
   const rawJson = msg.rawJson
     ? escapeHtml(formatJson(JSON.parse(msg.rawJson)))
     : "";
@@ -850,7 +873,7 @@ function renderMessage(msg: Message, ctx: RenderContext): string {
   </div>
   ${msg.rawJson ? renderRawToggle() : ""}
   <div class="rendered-view">
-    <div class="content">${contentToHtml(msg.content)}</div>
+    <div class="content">${await contentToHtml(msg.content)}</div>
   </div>
   ${msg.rawJson ? `<div class="raw-view">${rawJson}</div>` : ""}
 </div>`;
@@ -862,13 +885,13 @@ function renderMessage(msg: Message, ctx: RenderContext): string {
         rendered += `
   <details>
     <summary>thinking...</summary>
-    <div class="thinking">${contentToHtml(msg.thinking)}</div>
+    <div class="thinking">${await contentToHtml(msg.thinking)}</div>
   </details>`;
       }
 
       if (msg.content.trim()) {
         rendered += `
-  <div class="content">${contentToHtml(msg.content)}</div>`;
+  <div class="content">${await contentToHtml(msg.content)}</div>`;
       }
 
       const header = ctx.showAssistantHeader
@@ -1038,10 +1061,10 @@ export interface RenderHtmlOptions {
 /**
  * Render transcript to standalone HTML.
  */
-export function renderTranscriptHtml(
+export async function renderTranscriptHtml(
   transcript: Transcript,
   options: RenderHtmlOptions = {},
-): string {
+): Promise<string> {
   const { head, title } = options;
 
   const pageTitle = title || `Transcript - ${transcript.source.file}`;
@@ -1103,7 +1126,7 @@ export function renderTranscriptHtml(
           // Show header only at the START of an assistant turn (after user)
           const showAssistantHeader = isAssistantContent && !inAssistantTurn;
 
-          messagesHtml += renderMessage(msg, { showAssistantHeader });
+          messagesHtml += await renderMessage(msg, { showAssistantHeader });
 
           // Update turn state
           if (msg.type === "user") {

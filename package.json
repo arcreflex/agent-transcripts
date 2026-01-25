@@ -21,7 +21,8 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "cmd-ts": "^0.13.0"
+    "cmd-ts": "^0.13.0",
+    "shiki": "^3.21.0"
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",

@@ -65,11 +65,13 @@ function renderToFormat(
   transcript: Transcript,
   format: OutputFormat,
   options: { sourcePath?: string; title?: string },
-): string {
+): Promise<string> {
   if (format === "html") {
     return renderTranscriptHtml(transcript, { title: options.title });
   }
-  return renderTranscript(transcript, { sourcePath: options.sourcePath });
+  return Promise.resolve(
+    renderTranscript(transcript, { sourcePath: options.sourcePath }),
+  );
 }
 
 /**
@@ -203,7 +205,7 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
               : undefined;
 
           // Render and write
-          const rendered = renderToFormat(transcript, format, {
+          const rendered = await renderToFormat(transcript, format, {
             sourcePath,
             title: cachedTitle,
           });

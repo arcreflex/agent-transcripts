@@ -113,7 +113,7 @@ async function getSessionHtml(
       ? cached.segments[segmentIndex]?.title
       : undefined;
 
-  const html = renderTranscriptHtml(transcript, { title });
+  const html = await renderTranscriptHtml(transcript, { title });
 
   // Update cache (even in noCache mode, for titles)
   if (!noCache) {
