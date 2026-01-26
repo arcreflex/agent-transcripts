@@ -117,9 +117,13 @@ async function getSessionHtml(
 
   // Update cache (even in noCache mode, for titles)
   if (!noCache) {
+    // Deep copy segments to avoid mutating cached objects
     const newCache: CacheEntry = {
       contentHash,
-      segments: cached?.contentHash === contentHash ? [...cached.segments] : [],
+      segments:
+        cached?.contentHash === contentHash
+          ? cached.segments.map((s) => ({ ...s }))
+          : [],
     };
     while (newCache.segments.length <= segmentIndex) {
       newCache.segments.push({});

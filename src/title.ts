@@ -124,10 +124,14 @@ export async function generateTitles(
 
         // Update cache with new title
         // Start fresh if content changed to avoid stale md/html
-        const newCache: CacheEntry =
-          cached?.contentHash === contentHash
-            ? cached
-            : { contentHash, segments: [] };
+        // Deep copy segments to avoid mutating cached object
+        const newCache: CacheEntry = {
+          contentHash,
+          segments:
+            cached?.contentHash === contentHash
+              ? cached.segments.map((s) => ({ ...s }))
+              : [],
+        };
         // Ensure segment array is long enough
         while (newCache.segments.length <= segmentIndex) {
           newCache.segments.push({});

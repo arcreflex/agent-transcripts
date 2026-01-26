@@ -15,16 +15,22 @@ src/
   cli.ts          # CLI entry point, subcommand routing
   parse.ts        # Source → intermediate format
   render.ts       # Intermediate format → markdown
+  render-html.ts  # HTML transcript rendering
+  render-index.ts # Index page rendering
   convert.ts      # Full pipeline with provenance tracking
   sync.ts         # Batch sync sessions → markdown
   serve.ts        # HTTP server for dynamic transcript serving
   cache.ts        # Content-hash-based caching (~/.cache/agent-transcripts/)
+  title.ts        # LLM title generation
   types.ts        # Core types (Transcript, Message, Adapter)
   adapters/       # Source format adapters (currently: claude-code)
   utils/
     naming.ts     # Deterministic output file naming
     provenance.ts # Source tracking via transcripts.json + YAML front matter
     summary.ts    # Tool call summary extraction
+    openrouter.ts # OpenRouter API client for title generation
+    html.ts       # HTML escaping utility
+    tree.ts       # Tree navigation utilities
 test/
   fixtures/       # Snapshot test inputs/outputs
   snapshots.test.ts
