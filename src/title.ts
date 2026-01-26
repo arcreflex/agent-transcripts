@@ -41,7 +41,6 @@ export async function generateTitles(
 
   const result: TitleResult = { generated: 0, skipped: 0, errors: 0 };
 
-  // Check for API key
   if (!process.env.OPENROUTER_API_KEY) {
     if (!quiet) {
       console.error("OPENROUTER_API_KEY not set, skipping title generation");
@@ -49,7 +48,6 @@ export async function generateTitles(
     return result;
   }
 
-  // Load index
   const index = await loadIndex(outputDir);
   const entries = Object.entries(index.entries);
 
@@ -60,7 +58,6 @@ export async function generateTitles(
     return result;
   }
 
-  // Get adapters for parsing
   const adapters = getAdapters();
   const adapterMap = new Map(adapters.map((a) => [a.name, a]));
 
@@ -83,7 +80,6 @@ export async function generateTitles(
       const cachedTitle = getCachedTitle(cached, contentHash, segmentIndex);
 
       if (cachedTitle && !force) {
-        // Use cached title
         entry.title = cachedTitle;
         result.skipped++;
         continue;
@@ -116,10 +112,7 @@ export async function generateTitles(
         continue;
       }
 
-      // Render to markdown for title generation
       const markdown = renderTranscript(transcript);
-
-      // Generate title
       const title = await generateTitle(markdown);
 
       if (title) {
@@ -163,10 +156,8 @@ export async function generateTitles(
     }
   }
 
-  // Save updated index
   await saveIndex(outputDir, index);
 
-  // Summary
   if (!quiet) {
     console.error(
       `\nTitle generation complete: ${result.generated} generated, ${result.skipped} skipped, ${result.errors} errors`,

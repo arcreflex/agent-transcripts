@@ -8,6 +8,7 @@
  */
 
 import type { TranscriptsIndex } from "./utils/provenance.ts";
+import { escapeHtml } from "./utils/html.ts";
 
 // ============================================================================
 // Styles - Terminal Chronicle Theme (Index)
@@ -409,15 +410,6 @@ const INDEX_SCRIPT = `
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
 
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
