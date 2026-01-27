@@ -198,22 +198,23 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
           // Ensure output directory exists
           await mkdir(dirname(outputPath), { recursive: true });
 
-          // Preserve title from cache if content unchanged
-          const cachedTitle =
-            cached?.contentHash === contentHash
+          // Use title from: (1) harness-provided summary, (2) cache, (3) LLM later
+          const title =
+            session.summary ||
+            (cached?.contentHash === contentHash
               ? cached.segments[i]?.title
-              : undefined;
+              : undefined);
 
           // Render and write
           const rendered = await renderToFormat(transcript, format, {
             sourcePath,
-            title: cachedTitle,
+            title,
           });
           await Bun.write(outputPath, rendered);
           newOutputs.push(relativePath);
 
           // Build segment cache
-          const segmentCache: SegmentCache = { title: cachedTitle };
+          const segmentCache: SegmentCache = { title };
           segmentCache[format] = rendered;
           newCache.segments.push(segmentCache);
 
@@ -224,7 +225,7 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
             segmentIndex,
             syncedAt: new Date().toISOString(),
             firstUserMessage,
-            title: cachedTitle,
+            title,
             messageCount: transcript.metadata.messageCount,
             startTime: transcript.metadata.startTime,
             endTime: transcript.metadata.endTime,

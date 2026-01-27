@@ -1,0 +1,87 @@
+# Infer TypeScript types from Claude Code session data
+#
+# Usage: prose run scripts/infer-cc-types.prose
+#
+# Examines real CC session directories and updates the type definitions
+# in src/adapters/claude-code.ts to match the current data format.
+
+# Agent that synthesizes TypeScript types from JSON examples
+agent type-inferrer:
+  model: sonnet
+  prompt: """
+    You analyze JSON data samples and synthesize TypeScript type definitions.
+
+    Your output should be:
+    - Clean, minimal TypeScript interfaces
+    - JSDoc comments explaining non-obvious fields
+    - Optional fields marked with ?
+    - Union types where the data shows multiple shapes
+    - `unknown` (never `any`) for truly dynamic data
+
+    When you see multiple examples, infer which fields are always present
+    (required) vs sometimes present (optional).
+  """
+
+# Discover CC session data locations (once)
+let discovery = session "Find CC session data"
+  model: sonnet
+  prompt: """
+    Find Claude Code session data on this system.
+
+    1. Search for sessions-index.json files under ~/.claude
+    2. For each, note the directory path and count of .jsonl files
+
+    Return a structured list of what you found.
+    If nothing found, say so clearly.
+  """
+
+# Iterate: infer types → implement → check → repeat if needed
+let feedback = "(no feedback)"
+
+loop until **feedback indicates success** (max: 5):
+  # Parallel type inference
+  parallel:
+    index_types = session: type-inferrer
+      prompt: """
+        Analyze the sessions-index.json files from the discovered locations.
+
+        Generate TypeScript interfaces for:
+        - SessionsIndex (the root object)
+        - SessionIndexEntry (each entry in the entries array)
+      """
+      context: { discovery, feedback }
+
+    record_types = session: type-inferrer
+      prompt: """
+        Analyze Claude Code session .jsonl files (sample 20-30 lines from a few files).
+
+        Generate TypeScript types describing JSONL records.
+        - ClaudeRecord (the JSONL line structure)
+        - ContentBlock (the message.content array elements)
+      """
+      context: { discovery, feedback }
+
+  # Implement and verify
+  feedback = session "Update adapter types"
+    model: opus
+    prompt: """
+      Update the type definitions in src/adapters/claude-code.ts to match these inferred types.
+
+      ## Inferred from sessions-index.json
+      {index_types}
+
+      ## Inferred from JSONL records
+      {record_types}
+
+      ## Task
+
+      1. Read the current types in src/adapters/claude-code.ts
+      2. Edit to match the inferred types (add new fields, fix types, etc.)
+      3. Run: bun run typecheck
+
+      If typecheck succeeds and you're happy with the types, output a message indicating success.
+      If typecheck fails, assess whether the failures reflect a real need to change the code or a flaw in the type design.
+        If yes, and you're happy with the types, make the changes and output a message indicating success.
+      Otherwise: output feedback requesting revisions to the type design.
+    """
+    context: { index_types, record_types }

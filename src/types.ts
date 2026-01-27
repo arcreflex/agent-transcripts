@@ -79,6 +79,8 @@ export interface DiscoveredSession {
   path: string;
   relativePath: string;
   mtime: number;
+  /** Summary/title from the source harness, if available */
+  summary?: string;
 }
 
 /**

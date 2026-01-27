@@ -122,11 +122,23 @@ interface TranscriptsIndex {
 - `Message`: union of UserMessage | AssistantMessage | SystemMessage | ToolCallGroup | ErrorMessage
 - `Adapter`: name, discover function, parse function
 
+### Titles
+
+Transcripts get titles from (in priority order):
+
+1. Harness-provided summary (e.g., Claude Code's sessions-index.json `summary` field)
+2. Cached title from previous sync
+3. LLM-generated title via OpenRouter (requires `OPENROUTER_API_KEY`)
+
 ## Adding an Adapter
 
 1. Create `src/adapters/<name>.ts` implementing `Adapter`
 2. Register in `src/adapters/index.ts` (adapters map + detection rules)
 3. Add test fixtures in `test/fixtures/<name>/`
+
+## Development Scripts
+
+- `scripts/infer-cc-types.prose`: open-prose program to infer types from real CC session data
 
 ## Tests
 
