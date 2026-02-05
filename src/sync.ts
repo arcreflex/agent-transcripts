@@ -273,7 +273,7 @@ export async function sync(options: SyncOptions): Promise<SyncResult> {
     if (!quiet) {
       console.error("\nGenerating titles...");
     }
-    await generateTitles({ outputDir: output, quiet });
+    await generateTitles({ archiveDir: output, quiet });
 
     // Reload index after title generation and regenerate index.html
     const updatedIndex = await loadIndex(output);

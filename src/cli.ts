@@ -15,20 +15,11 @@ import {
 } from "cmd-ts";
 import { parseToTranscripts } from "./parse.ts";
 import { renderTranscript } from "./render.ts";
-import { sync, type OutputFormat } from "./sync.ts";
 import { convertToDirectory } from "./convert.ts";
 import { generateTitles } from "./title.ts";
 import { serve } from "./serve.ts";
-
-// Custom type for format option
-const formatType = {
-  async from(value: string): Promise<OutputFormat> {
-    if (value !== "md" && value !== "html") {
-      throw new Error(`Invalid format: ${value}. Must be "md" or "html".`);
-    }
-    return value;
-  },
-};
+import { archiveAll, DEFAULT_ARCHIVE_DIR } from "./archive.ts";
+import { getAdapters } from "./adapters/index.ts";
 
 // Shared options
 const inputArg = positional({
@@ -57,57 +48,47 @@ const headOpt = option({
   description: "Render branch ending at this message ID (default: latest)",
 });
 
-// Sync subcommand
-const syncCmd = command({
-  name: "sync",
-  description: "Sync session files to transcripts (markdown or HTML)",
+const archiveDirOpt = option({
+  type: optional(string),
+  long: "archive-dir",
+  description: `Archive directory (default: ${DEFAULT_ARCHIVE_DIR})`,
+});
+
+// Archive subcommand
+const archiveCmd = command({
+  name: "archive",
+  description: "Archive session files from source directory",
   args: {
     source: positional({
       type: string,
       displayName: "source",
       description: "Source directory to scan for session files",
     }),
-    output: option({
-      type: string,
-      long: "output",
-      short: "o",
-      description: "Output directory for transcripts",
-    }),
-    format: option({
-      type: optional(formatType),
-      long: "format",
-      description: "Output format: md (default) or html",
-    }),
-    noTitle: flag({
-      long: "no-title",
-      description: "Skip LLM title generation (for HTML format)",
-    }),
-    force: flag({
-      long: "force",
-      short: "f",
-      description: "Re-render all sessions, ignoring mtime",
-    }),
+    archiveDir: archiveDirOpt,
     quiet: flag({
       long: "quiet",
       short: "q",
       description: "Suppress progress output",
     }),
   },
-  async handler({ source, output, format, noTitle, force, quiet }) {
-    await sync({ source, output, format, noTitle, force, quiet });
+  async handler({ source, archiveDir, quiet }) {
+    const dir = archiveDir ?? DEFAULT_ARCHIVE_DIR;
+    const result = await archiveAll(dir, source, getAdapters(), { quiet });
+
+    if (!quiet) {
+      console.error(
+        `\nArchive complete: ${result.updated.length} updated, ${result.current.length} current, ${result.errors.length} errors`,
+      );
+    }
   },
 });
 
 // Title subcommand
 const titleCmd = command({
   name: "title",
-  description: "Generate LLM titles for transcripts.json entries",
+  description: "Generate LLM titles for archive entries",
   args: {
-    output: positional({
-      type: string,
-      displayName: "output",
-      description: "Output directory containing transcripts.json",
-    }),
+    archiveDir: archiveDirOpt,
     force: flag({
       long: "force",
       short: "f",
@@ -119,21 +100,21 @@ const titleCmd = command({
       description: "Suppress progress output",
     }),
   },
-  async handler({ output, force, quiet }) {
-    await generateTitles({ outputDir: output, force, quiet });
+  async handler({ archiveDir, force, quiet }) {
+    await generateTitles({
+      archiveDir: archiveDir ?? undefined,
+      force,
+      quiet,
+    });
   },
 });
 
 // Serve subcommand
 const serveCmd = command({
   name: "serve",
-  description: "Serve transcripts via HTTP (dynamic rendering with caching)",
+  description: "Serve transcripts from archive via HTTP",
   args: {
-    source: positional({
-      type: string,
-      displayName: "source",
-      description: "Source directory to scan for session files",
-    }),
+    archiveDir: archiveDirOpt,
     port: option({
       type: optional(number),
       long: "port",
@@ -145,13 +126,13 @@ const serveCmd = command({
       short: "q",
       description: "Suppress request logging",
     }),
-    noCache: flag({
-      long: "no-cache",
-      description: "Bypass HTML cache (for development)",
-    }),
   },
-  async handler({ source, port, quiet, noCache }) {
-    await serve({ source, port: port ?? 3000, quiet, noCache });
+  async handler({ archiveDir, port, quiet }) {
+    await serve({
+      archiveDir: archiveDir ?? undefined,
+      port: port ?? 3000,
+      quiet,
+    });
   },
 });
 
@@ -174,7 +155,6 @@ const convertCmd = command({
   },
   async handler({ input, output, adapter, head }) {
     if (output && isDirectoryOutput(output)) {
-      // Directory output: use provenance tracking
       await convertToDirectory({
         input,
         outputDir: output,
@@ -182,23 +162,21 @@ const convertCmd = command({
         head,
       });
     } else if (output) {
-      // Explicit file output: not supported anymore (use directory)
       console.error(
         "Error: Explicit file output not supported. Use a directory path instead.",
       );
       process.exit(1);
     } else {
-      // No output: stream to stdout
       const { transcripts } = await parseToTranscripts({ input, adapter });
       for (let i = 0; i < transcripts.length; i++) {
-        if (i > 0) console.log(); // blank line between transcripts
+        if (i > 0) console.log();
         console.log(renderTranscript(transcripts[i], head));
       }
     }
   },
 });
 
-const SUBCOMMANDS = ["convert", "sync", "title", "serve"] as const;
+const SUBCOMMANDS = ["convert", "archive", "title", "serve", "watch"] as const;
 
 // Main CLI with subcommands
 const cli = subcommands({
@@ -206,7 +184,7 @@ const cli = subcommands({
   description: "Transform agent session files to readable transcripts",
   cmds: {
     convert: convertCmd,
-    sync: syncCmd,
+    archive: archiveCmd,
     title: titleCmd,
     serve: serveCmd,
   },

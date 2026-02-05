@@ -1,27 +1,19 @@
 /**
- * Title generation command.
- *
- * Adds LLM-generated titles to transcripts.json entries that don't have them.
- * Can be run standalone or called from sync.
+ * Title generation: add LLM-generated titles to archive entries.
  */
 
-import { join } from "path";
-import { loadIndex, saveIndex } from "./utils/provenance.ts";
-import { getAdapters } from "./adapters/index.ts";
-import { renderTranscript } from "./render.ts";
-import { renderTranscriptHtml } from "./render-html.ts";
-import { generateTitle } from "./utils/openrouter.ts";
 import {
-  computeContentHash,
-  loadCache,
-  saveCache,
-  getCachedTitle,
-  type CacheEntry,
-} from "./cache.ts";
+  listEntries,
+  saveEntry,
+  DEFAULT_ARCHIVE_DIR,
+  type ArchiveEntry,
+} from "./archive.ts";
+import { renderTranscript } from "./render.ts";
+import { generateTitle } from "./utils/openrouter.ts";
 
 export interface TitleOptions {
-  outputDir: string;
-  force?: boolean; // regenerate all titles, not just missing ones
+  archiveDir?: string;
+  force?: boolean;
   quiet?: boolean;
 }
 
@@ -31,13 +23,14 @@ export interface TitleResult {
   errors: number;
 }
 
-/**
- * Generate titles for transcripts.json entries that don't have them.
- */
 export async function generateTitles(
   options: TitleOptions,
 ): Promise<TitleResult> {
-  const { outputDir, force = false, quiet = false } = options;
+  const {
+    archiveDir = DEFAULT_ARCHIVE_DIR,
+    force = false,
+    quiet = false,
+  } = options;
 
   const result: TitleResult = { generated: 0, skipped: 0, errors: 0 };
 
@@ -48,67 +41,26 @@ export async function generateTitles(
     return result;
   }
 
-  const index = await loadIndex(outputDir);
-  const entries = Object.entries(index.entries);
+  const entries = await listEntries(archiveDir);
 
   if (entries.length === 0) {
     if (!quiet) {
-      console.error("No entries in transcripts.json");
+      console.error("No entries in archive");
     }
     return result;
   }
 
-  const adapters = getAdapters();
-  const adapterMap = new Map(adapters.map((a) => [a.name, a]));
-
-  // Process entries that need titles
-  for (const [filename, entry] of entries) {
-    // Skip if already has title (unless force)
+  for (const entry of entries) {
     if (entry.title && !force) {
       result.skipped++;
       continue;
     }
 
     try {
-      // Read source and compute content hash
-      const content = await Bun.file(entry.source).text();
-      const contentHash = computeContentHash(content);
-
-      // Check cache for existing title
-      const cached = await loadCache(entry.source);
-      const segmentIndex = entry.segmentIndex ? entry.segmentIndex - 1 : 0;
-      const cachedTitle = getCachedTitle(cached, contentHash, segmentIndex);
-
-      if (cachedTitle && !force) {
-        entry.title = cachedTitle;
+      // Use the first transcript for title generation
+      const transcript = entry.transcripts[0];
+      if (!transcript || transcript.metadata.messageCount === 0) {
         result.skipped++;
-        continue;
-      }
-
-      // Determine adapter from filename pattern (HTML files were synced with an adapter)
-      // We need to find which adapter was used - check the source path
-      let adapter = adapterMap.get("claude-code"); // default
-      for (const a of adapters) {
-        if (entry.source.includes(".claude/")) {
-          adapter = a;
-          break;
-        }
-      }
-
-      if (!adapter) {
-        console.error(`Warning: No adapter found for ${entry.source}`);
-        result.errors++;
-        continue;
-      }
-
-      const transcripts = adapter.parse(content, entry.source);
-
-      // Find the right transcript (by segment index if applicable)
-      const transcript = transcripts[segmentIndex];
-
-      if (!transcript) {
-        console.error(`Warning: Transcript not found for ${filename}`);
-        result.errors++;
         continue;
       }
 
@@ -117,54 +69,24 @@ export async function generateTitles(
 
       if (title) {
         entry.title = title;
+        await saveEntry(archiveDir, entry);
         result.generated++;
         if (!quiet) {
-          console.error(`Title: ${filename} → ${title}`);
+          console.error(`Title: ${entry.sessionId} → ${title}`);
         }
-
-        // Update cache with new title
-        // Start fresh if content changed to avoid stale md/html
-        // Deep copy segments to avoid mutating cached object
-        const newCache: CacheEntry = {
-          contentHash,
-          segments:
-            cached?.contentHash === contentHash
-              ? cached.segments.map((s) => ({ ...s }))
-              : [],
-        };
-        // Ensure segment array is long enough
-        while (newCache.segments.length <= segmentIndex) {
-          newCache.segments.push({});
-        }
-        newCache.segments[segmentIndex].title = title;
-
-        // Re-render HTML with title if this is an HTML file
-        if (filename.endsWith(".html")) {
-          const html = await renderTranscriptHtml(transcript, { title });
-          const outputPath = join(outputDir, filename);
-          await Bun.write(outputPath, html);
-          newCache.segments[segmentIndex].html = html;
-        }
-
-        await saveCache(entry.source, newCache);
       } else {
         result.skipped++;
-        if (!quiet) {
-          console.error(`Skip (no title generated): ${filename}`);
-        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`Error: ${filename}: ${message}`);
+      console.error(`Error: ${entry.sessionId}: ${message}`);
       result.errors++;
     }
   }
 
-  await saveIndex(outputDir, index);
-
   if (!quiet) {
     console.error(
-      `\nTitle generation complete: ${result.generated} generated, ${result.skipped} skipped, ${result.errors} errors`,
+      `\nTitle generation: ${result.generated} generated, ${result.skipped} skipped, ${result.errors} errors`,
     );
   }
 
