@@ -146,6 +146,36 @@ describe("archiveSession", () => {
     expect(second.updated).toBe(false);
   });
 
+  it("updates title when harness summary changes on fresh entry", async () => {
+    const fixturePath = join(fixturesDir, "basic-conversation.input.jsonl");
+
+    // Archive without summary
+    const first = await archiveSession(
+      tmpDir,
+      { path: fixturePath, relativePath: "x", mtime: Date.now() },
+      claudeCodeAdapter,
+    );
+    expect(first.entry.title).toBeUndefined();
+
+    // Re-archive with a new harness summary (same content hash)
+    const second = await archiveSession(
+      tmpDir,
+      {
+        path: fixturePath,
+        relativePath: "x",
+        mtime: Date.now(),
+        summary: "New harness title",
+      },
+      claudeCodeAdapter,
+    );
+    expect(second.updated).toBe(true);
+    expect(second.entry.title).toBe("New harness title");
+
+    // Verify persisted
+    const loaded = await loadEntry(tmpDir, first.entry.sessionId);
+    expect(loaded?.title).toBe("New harness title");
+  });
+
   it("preserves existing title when re-archiving", async () => {
     const fixturePath = join(fixturesDir, "basic-conversation.input.jsonl");
     const session = {

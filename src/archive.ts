@@ -98,6 +98,12 @@ export async function archiveSession(
 
   const existing = await loadEntry(archiveDir, sessionId);
   if (existing && isFresh(existing, sourceHash, adapter)) {
+    // Still update title if harness summary changed
+    if (session.summary && existing.title !== session.summary) {
+      existing.title = session.summary;
+      await saveEntry(archiveDir, existing);
+      return { entry: existing, updated: true };
+    }
     return { entry: existing, updated: false };
   }
 
