@@ -7,7 +7,6 @@
  * - Data embedded inline (works with file://)
  */
 
-import type { TranscriptsIndex } from "./utils/provenance.ts";
 import { escapeHtml } from "./utils/html.ts";
 
 // ============================================================================
@@ -584,28 +583,4 @@ export function renderIndexFromSessions(
   <script>${INDEX_SCRIPT}</script>
 </body>
 </html>`;
-}
-
-/**
- * Render index.html from transcripts.json data.
- * Convenience wrapper around renderIndexFromSessions.
- */
-export function renderIndex(
-  index: TranscriptsIndex,
-  options: RenderIndexOptions = {},
-): string {
-  const sessions: SessionEntry[] = Object.entries(index.entries)
-    .filter(([filename]) => filename.endsWith(".html"))
-    .map(([filename, entry]) => ({
-      filename,
-      title:
-        entry.title || truncate(entry.firstUserMessage, 80) || entry.sessionId,
-      firstUserMessage: entry.firstUserMessage,
-      date: entry.startTime,
-      endDate: entry.endTime,
-      messageCount: entry.messageCount,
-      cwd: entry.cwd,
-    }));
-
-  return renderIndexFromSessions(sessions, options);
 }
