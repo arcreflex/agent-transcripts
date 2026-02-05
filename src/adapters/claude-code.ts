@@ -815,6 +815,7 @@ async function discoverByGlob(source: string): Promise<DiscoveredSession[]> {
 
 export const claudeCodeAdapter: Adapter = {
   name: "claude-code",
+  version: "claude-code:1",
 
   async discover(source: string): Promise<DiscoveredSession[]> {
     // Try index-based discovery first, fall back to glob

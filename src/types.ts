@@ -88,6 +88,8 @@ export interface DiscoveredSession {
  */
 export interface Adapter {
   name: string;
+  /** Versioned identifier for cache invalidation (e.g. "claude-code:1") */
+  version: string;
   /** Discover session files in the given directory */
   discover(source: string): Promise<DiscoveredSession[]>;
   /** Parse source content into one or more transcripts (split by conversation) */
