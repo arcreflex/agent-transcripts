@@ -20,6 +20,7 @@ import { generateTitles } from "./title.ts";
 import { serve } from "./serve.ts";
 import { archiveAll, DEFAULT_ARCHIVE_DIR } from "./archive.ts";
 import { getAdapters } from "./adapters/index.ts";
+import { ArchiveWatcher } from "./watch.ts";
 
 // Shared options
 const inputArg = positional({
@@ -136,6 +137,59 @@ const serveCmd = command({
   },
 });
 
+// Watch subcommand
+const watchCmd = command({
+  name: "watch",
+  description: "Watch source directories and keep archive updated",
+  args: {
+    source: positional({
+      type: string,
+      displayName: "source",
+      description: "Source directory to watch for session files",
+    }),
+    archiveDir: archiveDirOpt,
+    pollInterval: option({
+      type: optional(number),
+      long: "poll-interval",
+      description: "Poll interval in milliseconds (default: 30000)",
+    }),
+    quiet: flag({
+      long: "quiet",
+      short: "q",
+      description: "Suppress progress output",
+    }),
+  },
+  async handler({ source, archiveDir, pollInterval, quiet }) {
+    const watcher = new ArchiveWatcher([source], {
+      archiveDir: archiveDir ?? undefined,
+      pollIntervalMs: pollInterval ?? undefined,
+      quiet,
+      onUpdate(result) {
+        if (!quiet && result.updated.length > 0) {
+          console.error(`Updated: ${result.updated.join(", ")}`);
+        }
+      },
+      onError(error) {
+        console.error(`Watch error: ${error.message}`);
+      },
+    });
+
+    if (!quiet) {
+      console.error(`Watching ${source}...`);
+    }
+
+    await watcher.start();
+
+    process.on("SIGINT", () => {
+      if (!quiet) {
+        console.error("\nStopping watcher...");
+      }
+      watcher.stop();
+      process.exit(0);
+    });
+  },
+});
+
 /**
  * Check if output looks like a directory (no extension) vs a specific file.
  */
@@ -187,6 +241,7 @@ const cli = subcommands({
     archive: archiveCmd,
     title: titleCmd,
     serve: serveCmd,
+    watch: watchCmd,
   },
 });
 
