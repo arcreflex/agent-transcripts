@@ -84,6 +84,8 @@ HTML (rendered on demand, in-memory LRU)
 
 `convert` is a standalone direct pipeline (no archive dependency).
 
+`serve` loads the archive once at startup — it won't pick up new sessions archived by a concurrent `watch` without a restart. Live-reloading could be added later (periodic re-listing or file-watch trigger) if needed.
+
 - Adapters handle source formats (see `src/adapters/index.ts` for registry)
 - Auto-detection: paths containing `.claude/` → claude-code adapter
 - Branching conversations preserved via `parentMessageRef` on messages
