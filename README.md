@@ -17,16 +17,15 @@ src/
   render.ts       # Intermediate format → markdown
   render-html.ts  # HTML transcript rendering
   render-index.ts # Index page rendering
-  convert.ts      # Full pipeline with provenance tracking
-  sync.ts         # Batch sync sessions → markdown
-  serve.ts        # HTTP server for dynamic transcript serving
-  cache.ts        # Content-hash-based caching (~/.cache/agent-transcripts/)
-  title.ts        # LLM title generation
+  convert.ts      # Direct pipeline (parse → render to stdout or directory)
+  archive.ts      # Persistent archive store (~/.local/share/agent-transcripts/archive/)
+  watch.ts        # Continuous archive updates via fs.watch + polling
+  serve.ts        # HTTP server serving from archive with in-memory LRU
+  title.ts        # LLM title generation (writes to archive entries)
   types.ts        # Core types (Transcript, Message, Adapter)
   adapters/       # Source format adapters (currently: claude-code)
   utils/
     naming.ts     # Deterministic output file naming
-    provenance.ts # Source tracking via transcripts.json + YAML front matter
     summary.ts    # Tool call summary extraction
     openrouter.ts # OpenRouter API client for title generation
     html.ts       # HTML escaping utility
@@ -34,13 +33,14 @@ src/
 test/
   fixtures/       # Snapshot test inputs/outputs
   snapshots.test.ts
+  archive.test.ts
 ```
 
 ## Commands
 
 ```bash
 bun run check        # typecheck + prettier
-bun run test         # snapshot tests
+bun run test         # snapshot tests + archive tests
 bun run format       # auto-format
 ```
 
@@ -50,9 +50,23 @@ bun run format       # auto-format
 # Subcommands (convert is default if omitted)
 agent-transcripts convert <file>              # Parse and render to stdout
 agent-transcripts convert <file> -o <dir>     # Parse and render to directory
-agent-transcripts sync <dir> -o <out>         # Batch sync sessions
-agent-transcripts serve <dir>                 # Serve transcripts via HTTP
-agent-transcripts serve <dir> -p 8080         # Serve on custom port
+
+# Archive management
+agent-transcripts archive <source>            # Archive sessions from source dir
+agent-transcripts archive <source> --archive-dir ~/my-archive
+
+# Serving
+agent-transcripts serve                       # Serve from default archive
+agent-transcripts serve --archive-dir <dir>   # Serve from custom archive
+agent-transcripts serve -p 8080               # Custom port
+
+# Watching
+agent-transcripts watch <source>              # Keep archive updated continuously
+agent-transcripts watch <source> --poll-interval 60000
+
+# Title generation
+agent-transcripts title                       # Generate titles for archive entries
+agent-transcripts title -f                    # Force regenerate all titles
 
 # Use "-" for stdin
 cat session.jsonl | agent-transcripts -
@@ -60,74 +74,58 @@ cat session.jsonl | agent-transcripts -
 
 ## Architecture
 
-Two-stage pipeline: Parse (source → intermediate) → Render (intermediate → markdown).
+```
+Source (Claude Code sessions)
+    ↓ [archive / watch]
+Archive (~/.local/share/agent-transcripts/archive/{sessionId}.json)
+    ↓ [serve]
+HTML (rendered on demand, in-memory LRU)
+```
+
+`convert` is a standalone direct pipeline (no archive dependency).
 
 - Adapters handle source formats (see `src/adapters/index.ts` for registry)
 - Auto-detection: paths containing `.claude/` → claude-code adapter
 - Branching conversations preserved via `parentMessageRef` on messages
-- Provenance tracking via `transcripts.json` index + YAML front matter
 - Deterministic naming: `{datetime}-{sessionId}.md`
-- Sync uses sessions-index.json for discovery (claude-code), skipping subagent files
-- Sync uses content hash to skip unchanged sources (see Cache section)
 
-### Cache
+### Archive
 
-Derived content (rendered outputs, LLM-generated titles) is cached at `~/.cache/agent-transcripts/`:
+The archive is the central data store at `~/.local/share/agent-transcripts/archive/`:
 
 ```
-~/.cache/agent-transcripts/
-  {source-path-hash}.json  →  CacheEntry
+~/.local/share/agent-transcripts/archive/
+  {sessionId}.json  →  ArchiveEntry
 ```
 
 ```typescript
-interface CacheEntry {
-  contentHash: string; // hash of source content (invalidation key)
-  segments: Array<{
-    title?: string; // LLM-generated title
-    html?: string; // rendered HTML
-    md?: string; // rendered markdown
-  }>;
+interface ArchiveEntry {
+  sessionId: string;
+  sourcePath: string; // absolute source path
+  sourceHash: string; // content hash (invalidation key)
+  adapterName: string;
+  adapterVersion: string; // e.g. "claude-code:1"
+  schemaVersion: number;
+  archivedAt: string; // ISO timestamp
+  title?: string; // harness-provided or LLM-generated
+  transcripts: Transcript[];
 }
 ```
 
-Cache is keyed by source path (hashed), invalidated by content hash. When source content changes, all cached data is invalidated and regenerated.
-
-### transcripts.json
-
-The index file is a table of contents for the output directory:
-
-```typescript
-interface TranscriptsIndex {
-  version: 1;
-  entries: {
-    [outputFilename: string]: {
-      source: string; // absolute path to source
-      sessionId: string; // full session ID from filename
-      segmentIndex?: number; // for multi-transcript sources (1-indexed)
-      syncedAt: string; // ISO timestamp
-      firstUserMessage: string; // first user message content
-      title?: string; // copied from cache for convenience
-      messageCount: number;
-      startTime: string; // ISO timestamp
-      endTime: string; // ISO timestamp
-      cwd?: string; // working directory
-    };
-  };
-}
-```
+Freshness is determined by `sourceHash + adapterVersion + schemaVersion`. When any changes, the entry is re-archived.
 
 ## Key Types
 
 - `Transcript`: source info, warnings, messages array
 - `Message`: union of UserMessage | AssistantMessage | SystemMessage | ToolCallGroup | ErrorMessage
-- `Adapter`: name, discover function, parse function
+- `Adapter`: name, version, discover function, parse function
 
 ### Titles
 
 Transcripts get titles from (in priority order):
 
 1. Harness-provided summary (e.g., Claude Code's sessions-index.json `summary` field)
-2. Cached title from previous sync
+2. Existing title from previous archive entry
 3. LLM-generated title via OpenRouter (requires `OPENROUTER_API_KEY`)
 
 ## Adding an Adapter
@@ -143,5 +141,7 @@ Transcripts get titles from (in priority order):
 ## Tests
 
 Snapshot-based: `*.input.jsonl` → parse → render → compare against `*.output.md`
+
+Archive tests: real fixture files + temp dirs to verify archiving, freshness, listing.
 
 To update snapshots: manually edit the expected `.output.md` files.
