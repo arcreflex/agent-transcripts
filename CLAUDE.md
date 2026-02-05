@@ -4,7 +4,8 @@
 
 ## Architectural Notes
 
-- **Source paths are stable**: Session source paths (e.g., `~/.claude/projects/.../sessions/`) are standardized by the tools that create them. Don't over-engineer for path changes—use source paths as cache keys directly.
+- **Source paths are stable**: Session source paths (e.g., `~/.claude/projects/.../sessions/`) are standardized by the tools that create them. Archive entries store the absolute source path for traceability.
+- **Archive is the central store**: All derived data (titles, etc.) lives on archive entries. Rendered HTML is in-memory only (LRU in serve). No persistent cache layer.
 
 ## Verification
 
