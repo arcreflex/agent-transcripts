@@ -5,9 +5,9 @@
  * Lockfile prevents concurrent watchers on the same archive.
  */
 
-import { watch, type FSWatcher } from "fs";
+import { watch, unlinkSync, type FSWatcher } from "fs";
 import { join } from "path";
-import { mkdir, unlink, writeFile, readFile } from "fs/promises";
+import { mkdir, writeFile, readFile } from "fs/promises";
 import { getAdapters } from "./adapters/index.ts";
 import {
   archiveAll,
@@ -51,9 +51,9 @@ async function acquireLock(archiveDir: string): Promise<boolean> {
   }
 }
 
-async function releaseLock(archiveDir: string): Promise<void> {
+function releaseLock(archiveDir: string): void {
   try {
-    await unlink(lockPath(archiveDir));
+    unlinkSync(lockPath(archiveDir));
   } catch {}
 }
 

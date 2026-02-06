@@ -30,6 +30,22 @@ export interface ArchiveEntry {
   transcripts: Transcript[];
 }
 
+/** Lightweight per-transcript summary for indexing (no message bodies). */
+export interface TranscriptSummary {
+  firstMessageTimestamp: string;
+  firstUserMessage: string;
+  metadata: Transcript["metadata"];
+}
+
+/** Entry header — full metadata but no message bodies. */
+export interface ArchiveEntryHeader {
+  sessionId: string;
+  sourcePath: string;
+  sourceHash: string;
+  title?: string;
+  segments: TranscriptSummary[];
+}
+
 export interface ArchiveResult {
   updated: string[];
   current: string[];
@@ -182,4 +198,52 @@ export async function listEntries(archiveDir: string): Promise<ArchiveEntry[]> {
   }
 
   return entries;
+}
+
+function summarizeTranscript(t: Transcript): TranscriptSummary {
+  let firstUserMessage = "";
+  for (const msg of t.messages) {
+    if (msg.type === "user") {
+      firstUserMessage = msg.content;
+      break;
+    }
+  }
+  return {
+    firstMessageTimestamp: t.messages[0]?.timestamp ?? "",
+    firstUserMessage,
+    metadata: t.metadata,
+  };
+}
+
+/** Load entry headers only — reads each entry but discards message bodies. */
+export async function listEntryHeaders(
+  archiveDir: string,
+): Promise<ArchiveEntryHeader[]> {
+  const headers: ArchiveEntryHeader[] = [];
+
+  let files: string[];
+  try {
+    files = await readdir(archiveDir);
+  } catch {
+    return headers;
+  }
+
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    try {
+      const content = await Bun.file(join(archiveDir, file)).text();
+      const entry = JSON.parse(content) as ArchiveEntry;
+      headers.push({
+        sessionId: entry.sessionId,
+        sourcePath: entry.sourcePath,
+        sourceHash: entry.sourceHash,
+        title: entry.title,
+        segments: entry.transcripts.map(summarizeTranscript),
+      });
+    } catch {
+      // Skip corrupt entries
+    }
+  }
+
+  return headers;
 }

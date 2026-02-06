@@ -7,20 +7,15 @@
 import type { Transcript } from "../types.ts";
 import { basename } from "path";
 
-/**
- * Extract date and time from transcript's first message timestamp.
- * Returns format: yyyy-mm-dd-hhmm (24-hour, local time)
- */
-function extractDateTime(transcript: Transcript): string {
-  const firstMessage = transcript.messages[0];
-  const date = firstMessage?.timestamp
-    ? new Date(firstMessage.timestamp)
-    : new Date();
-
-  if (isNaN(date.getTime())) {
-    return formatDateTime(new Date());
-  }
+/** Format a timestamp as yyyy-mm-dd-hhmm (24-hour, local time). */
+export function formatDateTimePrefix(timestamp: string): string {
+  const date = timestamp ? new Date(timestamp) : new Date();
+  if (isNaN(date.getTime())) return formatDateTime(new Date());
   return formatDateTime(date);
+}
+
+function extractDateTime(transcript: Transcript): string {
+  return formatDateTimePrefix(transcript.messages[0]?.timestamp ?? "");
 }
 
 function formatDateTime(date: Date): string {
