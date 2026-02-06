@@ -56,18 +56,46 @@ export function computeContentHash(content: string): string {
   return Bun.hash(content).toString(16);
 }
 
+/** Type guard: validates that a parsed JSON value has the shape of an ArchiveEntry. */
+function isArchiveEntry(value: unknown): value is ArchiveEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.sessionId === "string" &&
+    typeof v.sourcePath === "string" &&
+    typeof v.sourceHash === "string" &&
+    typeof v.adapterName === "string" &&
+    typeof v.adapterVersion === "string" &&
+    typeof v.schemaVersion === "number" &&
+    typeof v.archivedAt === "string" &&
+    Array.isArray(v.transcripts)
+  );
+}
+
 export async function loadEntry(
   archiveDir: string,
   sessionId: string,
 ): Promise<ArchiveEntry | undefined> {
+  let content: string;
   try {
-    const content = await Bun.file(
-      join(archiveDir, `${sessionId}.json`),
-    ).text();
-    return JSON.parse(content) as ArchiveEntry;
-  } catch {
+    content = await Bun.file(join(archiveDir, `${sessionId}.json`)).text();
+  } catch (err: unknown) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      err.code === "ENOENT"
+    ) {
+      return undefined;
+    }
+    throw err;
+  }
+  const parsed: unknown = JSON.parse(content);
+  if (!isArchiveEntry(parsed)) {
+    console.error(`Warning: invalid archive entry for ${sessionId}, skipping`);
     return undefined;
   }
+  return parsed;
 }
 
 export async function saveEntry(
@@ -177,27 +205,37 @@ export async function archiveAll(
   return result;
 }
 
-export async function listEntries(archiveDir: string): Promise<ArchiveEntry[]> {
-  const entries: ArchiveEntry[] = [];
-
+async function readArchiveFiles<T>(
+  archiveDir: string,
+  transform: (entry: ArchiveEntry) => T,
+): Promise<T[]> {
   let files: string[];
   try {
     files = await readdir(archiveDir);
   } catch {
-    return entries;
+    return [];
   }
 
+  const results: T[] = [];
   for (const file of files) {
     if (!file.endsWith(".json")) continue;
     try {
       const content = await Bun.file(join(archiveDir, file)).text();
-      entries.push(JSON.parse(content) as ArchiveEntry);
+      const parsed: unknown = JSON.parse(content);
+      if (!isArchiveEntry(parsed)) {
+        console.error(`Warning: invalid archive file ${file}, skipping`);
+        continue;
+      }
+      results.push(transform(parsed));
     } catch {
-      // Skip corrupt entries
+      // Skip corrupt/unreadable entries
     }
   }
+  return results;
+}
 
-  return entries;
+export async function listEntries(archiveDir: string): Promise<ArchiveEntry[]> {
+  return readArchiveFiles(archiveDir, (entry) => entry);
 }
 
 function summarizeTranscript(t: Transcript): TranscriptSummary {
@@ -219,31 +257,11 @@ function summarizeTranscript(t: Transcript): TranscriptSummary {
 export async function listEntryHeaders(
   archiveDir: string,
 ): Promise<ArchiveEntryHeader[]> {
-  const headers: ArchiveEntryHeader[] = [];
-
-  let files: string[];
-  try {
-    files = await readdir(archiveDir);
-  } catch {
-    return headers;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    try {
-      const content = await Bun.file(join(archiveDir, file)).text();
-      const entry = JSON.parse(content) as ArchiveEntry;
-      headers.push({
-        sessionId: entry.sessionId,
-        sourcePath: entry.sourcePath,
-        sourceHash: entry.sourceHash,
-        title: entry.title,
-        segments: entry.transcripts.map(summarizeTranscript),
-      });
-    } catch {
-      // Skip corrupt entries
-    }
-  }
-
-  return headers;
+  return readArchiveFiles(archiveDir, (entry) => ({
+    sessionId: entry.sessionId,
+    sourcePath: entry.sourcePath,
+    sourceHash: entry.sourceHash,
+    title: entry.title,
+    segments: entry.transcripts.map(summarizeTranscript),
+  }));
 }

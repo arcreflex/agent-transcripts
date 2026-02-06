@@ -76,6 +76,7 @@ export interface ErrorMessage extends BaseMessage {
  * A session file discovered by an adapter.
  */
 export interface DiscoveredSession {
+  /** Absolute path to the session file. Must be absolute for archive traceability. */
   path: string;
   relativePath: string;
   mtime: number;

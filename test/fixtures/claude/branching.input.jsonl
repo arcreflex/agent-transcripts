@@ -1,0 +1,6 @@
+{"type": "user", "uuid": "msg-1", "message": {"role": "user", "content": "What language should I use for this project?"}, "timestamp": "2024-01-15T10:00:00Z"}
+{"type": "assistant", "uuid": "msg-2", "parentUuid": "msg-1", "message": {"role": "assistant", "content": [{"type": "text", "text": "It depends on your requirements. What kind of project is it?"}]}, "timestamp": "2024-01-15T10:00:05Z"}
+{"type": "user", "uuid": "msg-3a", "parentUuid": "msg-2", "message": {"role": "user", "content": "A CLI tool."}, "timestamp": "2024-01-15T10:01:00Z"}
+{"type": "assistant", "uuid": "msg-4a", "parentUuid": "msg-3a", "message": {"role": "assistant", "content": [{"type": "text", "text": "For a CLI tool, I'd suggest Go or Rust."}]}, "timestamp": "2024-01-15T10:01:05Z"}
+{"type": "user", "uuid": "msg-3b", "parentUuid": "msg-2", "message": {"role": "user", "content": "A web application."}, "timestamp": "2024-01-15T10:02:00Z"}
+{"type": "assistant", "uuid": "msg-4b", "parentUuid": "msg-3b", "message": {"role": "assistant", "content": [{"type": "text", "text": "For a web app, TypeScript with a framework like Next.js is a great choice."}]}, "timestamp": "2024-01-15T10:02:05Z"}

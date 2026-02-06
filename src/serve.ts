@@ -136,6 +136,9 @@ export async function serve(options: ServeOptions): Promise<void> {
   const sessions = buildSessionMap(headers);
   const htmlCache = new HtmlCache(200);
 
+  // Index is static (session map doesn't change), so build once
+  const indexHtml = renderIndexFromSessions(buildIndexEntries(sessions));
+
   if (!quiet) {
     console.error(`Found ${sessions.size} transcript(s)`);
     console.error(`Starting server at http://localhost:${port}`);
@@ -153,9 +156,7 @@ export async function serve(options: ServeOptions): Promise<void> {
 
       // Index page
       if (path === "/" || path === "/index.html") {
-        const entries = buildIndexEntries(sessions);
-        const html = renderIndexFromSessions(entries);
-        return new Response(html, {
+        return new Response(indexHtml, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
       }

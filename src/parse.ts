@@ -15,9 +15,6 @@ export interface ParseResult {
   inputPath: string;
 }
 
-/**
- * Read input content from file or stdin.
- */
 async function readInput(
   input: string,
 ): Promise<{ content: string; path: string }> {

@@ -31,30 +31,53 @@ async function acquireLock(archiveDir: string): Promise<boolean> {
   await mkdir(archiveDir, { recursive: true });
   const lock = lockPath(archiveDir);
   try {
-    const existing = await readFile(lock, "utf-8").catch(() => null);
-    if (existing) {
-      // Check if the PID is still alive
-      const pid = parseInt(existing, 10);
-      if (!isNaN(pid)) {
-        try {
-          process.kill(pid, 0);
-          return false; // Process is alive, lock is held
-        } catch {
-          // Process is dead, stale lock — fall through to acquire
+    await writeFile(lock, String(process.pid), { flag: "wx" });
+    return true;
+  } catch (err: unknown) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      err.code === "EEXIST"
+    ) {
+      // Lock file exists — check if the holding process is still alive
+      try {
+        const existing = await readFile(lock, "utf-8");
+        const pid = parseInt(existing, 10);
+        if (!isNaN(pid)) {
+          try {
+            process.kill(pid, 0);
+            return false; // Process is alive, lock is held
+          } catch {
+            // Process is dead, stale lock — reclaim
+          }
         }
+        await writeFile(lock, String(process.pid), { flag: "w" });
+        return true;
+      } catch {
+        return false;
       }
     }
-    await writeFile(lock, String(process.pid), { flag: "w" });
-    return true;
-  } catch {
-    return false;
+    throw err;
   }
 }
 
 function releaseLock(archiveDir: string): void {
   try {
     unlinkSync(lockPath(archiveDir));
-  } catch {}
+  } catch (err: unknown) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      err.code === "ENOENT"
+    ) {
+      return;
+    }
+    console.error(
+      `Warning: failed to release lock: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 export class ArchiveWatcher {

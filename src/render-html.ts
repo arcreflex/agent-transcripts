@@ -11,13 +11,15 @@
 
 import type { Transcript, Message, ToolCall } from "./types.ts";
 import { createHighlighter, type Highlighter } from "shiki";
-import {
-  buildTree,
-  findLatestLeaf,
-  tracePath,
-  getFirstLine,
-} from "./utils/tree.ts";
+import { walkTranscriptTree } from "./utils/tree.ts";
 import { escapeHtml } from "./utils/html.ts";
+import {
+  THEME_VARS,
+  BASE_RESET,
+  SCROLLBAR_STYLES,
+  accentBar,
+  responsiveBase,
+} from "./utils/theme.ts";
 
 // Lazy-loaded shiki highlighter
 let highlighter: Highlighter | null = null;
@@ -39,32 +41,11 @@ async function getHighlighter(): Promise<Highlighter> {
 const STYLES = `
 /* ============================================================================
    Agent Transcripts - Terminal Chronicle Theme
-   Inspired by the Claude Code TUI: dark, focused, monospace-forward
    ============================================================================ */
-
-@import url('https://fonts.googleapis.com/css2?family=Berkeley+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap');
+${THEME_VARS}
 
 :root {
-  /* Typography - Monospace primary, clean sans for body */
-  --font-mono: 'Berkeley Mono', 'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', Consolas, monospace;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-
-  /* Dark theme - Terminal aesthetic */
-  --bg: #0d0d0d;
-  --bg-elevated: #141414;
-  --bg-surface: #1a1a1a;
-  --fg: #e4e4e4;
-  --fg-secondary: #a3a3a3;
-  --muted: #666666;
-  --border: #2a2a2a;
-  --border-subtle: #222222;
-
-  /* Accent - Amber/Orange (Claude Code cursor vibe) */
-  --accent: #f59e0b;
-  --accent-dim: #b45309;
-  --accent-glow: rgba(245, 158, 11, 0.15);
-
-  /* Semantic colors */
+  /* Semantic colors (transcript-specific) */
   --user-accent: #3b82f6;
   --user-bg: rgba(59, 130, 246, 0.08);
   --user-border: rgba(59, 130, 246, 0.3);
@@ -87,32 +68,11 @@ const STYLES = `
   --thinking-border: #1f1f1f;
   --raw-bg: #0a0a0a;
 
-  /* Links */
-  --link: #60a5fa;
-  --link-hover: #93c5fd;
-
-  /* Shadows & effects */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --glow: 0 0 20px var(--accent-glow);
 }
 
-/* Light theme - Minimal, paper-like */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #fafafa;
-    --bg-elevated: #ffffff;
-    --bg-surface: #f5f5f5;
-    --fg: #171717;
-    --fg-secondary: #525252;
-    --muted: #a3a3a3;
-    --border: #e5e5e5;
-    --border-subtle: #f0f0f0;
-
-    --accent: #d97706;
-    --accent-dim: #92400e;
-    --accent-glow: rgba(217, 119, 6, 0.1);
-
     --user-accent: #2563eb;
     --user-bg: rgba(37, 99, 235, 0.04);
     --user-border: rgba(37, 99, 235, 0.2);
@@ -134,32 +94,10 @@ const STYLES = `
     --thinking-border: #e5e5e5;
     --raw-bg: #f0f0f0;
 
-    --link: #2563eb;
-    --link-hover: #1d4ed8;
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
     --glow: none;
   }
 }
-
-*, *::before, *::after { box-sizing: border-box; }
-
-html {
-  font-size: 15px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  font-family: var(--font-body);
-  background: var(--bg);
-  color: var(--fg);
-  line-height: 1.65;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-}
+${BASE_RESET}
 
 /* Main container */
 .transcript-container {
@@ -168,35 +106,7 @@ body {
   padding: 2.5rem 2rem 4rem;
   position: relative;
 }
-
-/* Subtle left border accent */
-.transcript-container::before {
-  content: '';
-  position: fixed;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--accent-dim) 15%,
-    var(--accent) 50%,
-    var(--accent-dim) 85%,
-    transparent 100%
-  );
-  opacity: 0.6;
-}
-
-a {
-  color: var(--link);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-a:hover {
-  color: var(--link-hover);
-}
+${accentBar("transcript-container")}
 
 /* ============================================================================
    Header - Terminal prompt style
@@ -678,45 +588,10 @@ details.tool-call[open] > .tool-call-header::before {
   display: none;
 }
 
-/* ============================================================================
-   Scrollbar
-   ============================================================================ */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--border-subtle);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--muted);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--fg-secondary);
-}
-
-/* ============================================================================
-   Responsive
-   ============================================================================ */
+${SCROLLBAR_STYLES}
+${responsiveBase("transcript-container")}
 
 @media (max-width: 640px) {
-  html {
-    font-size: 14px;
-  }
-
-  .transcript-container {
-    padding: 1.5rem 1rem 3rem;
-  }
-
-  .transcript-container::before {
-    display: none;
-  }
-
   header h1 {
     font-size: 1rem;
   }
@@ -796,9 +671,6 @@ const SCRIPT = `
 // HTML Utilities
 // ============================================================================
 
-/**
- * Format JSON for display with indentation.
- */
 function formatJson(obj: unknown): string {
   try {
     return JSON.stringify(obj, null, 2);
@@ -865,9 +737,14 @@ async function renderMessage(
   msg: Message,
   ctx: RenderContext,
 ): Promise<string> {
-  const rawJson = msg.rawJson
-    ? escapeHtml(formatJson(JSON.parse(msg.rawJson)))
-    : "";
+  let rawJson = "";
+  if (msg.rawJson) {
+    try {
+      rawJson = escapeHtml(formatJson(JSON.parse(msg.rawJson)));
+    } catch {
+      rawJson = escapeHtml(msg.rawJson);
+    }
+  }
 
   switch (msg.type) {
     case "user":
@@ -1000,77 +877,43 @@ export async function renderTranscriptHtml(
 
   // Build messages section
   let messagesHtml = "";
+  let inAssistantTurn = false;
 
-  if (transcript.messages.length === 0) {
-    messagesHtml = "<p><em>No messages in this transcript.</em></p>";
-  } else {
-    const { bySourceRef, children, parents } = buildTree(transcript.messages);
+  for (const event of walkTranscriptTree(transcript, { head })) {
+    switch (event.type) {
+      case "empty":
+        messagesHtml = "<p><em>No messages in this transcript.</em></p>";
+        break;
 
-    let target: string | undefined;
-    if (head) {
-      if (!bySourceRef.has(head)) {
-        messagesHtml = `<p class="error">Message ID <code>${escapeHtml(head)}</code> not found</p>`;
-      } else {
-        target = head;
-      }
-    } else {
-      target = findLatestLeaf(bySourceRef, children);
-    }
+      case "head_not_found":
+        messagesHtml = `<p class="error">Message ID <code>${escapeHtml(event.head)}</code> not found</p>`;
+        break;
 
-    if (target) {
-      const path = tracePath(target, parents);
-      const pathSet = new Set(path);
-      let inAssistantTurn = false;
-
-      for (const sourceRef of path) {
-        const msgs = bySourceRef.get(sourceRef);
-        if (!msgs) continue;
-
-        for (const msg of msgs) {
-          // Track when we enter/exit assistant turns
+      case "messages":
+        for (const msg of event.messages) {
           const isAssistantContent =
             msg.type === "assistant" || msg.type === "tool_calls";
-
-          // Show header only at the START of an assistant turn (after user)
           const showAssistantHeader = isAssistantContent && !inAssistantTurn;
 
           messagesHtml += await renderMessage(msg, { showAssistantHeader });
 
-          // Update turn state
           if (msg.type === "user") {
             inAssistantTurn = false;
           } else if (isAssistantContent) {
             inAssistantTurn = true;
           }
         }
+        break;
 
-        // Branch notes
-        if (!head) {
-          const childSet = children.get(sourceRef);
-          if (childSet && childSet.size > 1) {
-            const otherBranches = [...childSet].filter((c) => !pathSet.has(c));
-            if (otherBranches.length > 0) {
-              messagesHtml += `
+      case "branch_note":
+        messagesHtml += `
 <div class="branch-note">
   <strong>Other branches:</strong>
   <ul>
-    ${otherBranches
-      .map((branchRef) => {
-        const branchMsgs = bySourceRef.get(branchRef);
-        if (branchMsgs && branchMsgs.length > 0) {
-          const firstLine = getFirstLine(branchMsgs[0]);
-          return `<li><code>${escapeHtml(branchRef)}</code> "${escapeHtml(firstLine)}"</li>`;
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n    ")}
+    ${event.branches.map((b) => `<li><code>${escapeHtml(b.sourceRef)}</code> "${escapeHtml(b.firstLine)}"</li>`).join("\n    ")}
   </ul>
 </div>`;
-            }
-          }
-        }
-      }
+        break;
     }
   }
 

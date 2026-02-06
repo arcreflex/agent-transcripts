@@ -29,11 +29,16 @@ src/
     summary.ts    # Tool call summary extraction
     openrouter.ts # OpenRouter API client for title generation
     html.ts       # HTML escaping utility
-    tree.ts       # Tree navigation utilities
+    tree.ts       # Tree navigation and walkTranscriptTree generator
+    text.ts       # Shared text utilities (truncate)
+    theme.ts      # Shared CSS theme constants
 test/
   fixtures/       # Snapshot test inputs/outputs
   snapshots.test.ts
   archive.test.ts
+  tree.test.ts
+  naming.test.ts
+  summary.test.ts
 ```
 
 ## Commands

@@ -30,16 +30,10 @@ export function detectAdapter(filePath: string): string | undefined {
   return undefined;
 }
 
-/**
- * Get adapter by name.
- */
 export function getAdapter(name: string): Adapter | undefined {
   return adapters[name];
 }
 
-/**
- * List available adapter names.
- */
 export function listAdapters(): string[] {
   return Object.keys(adapters);
 }

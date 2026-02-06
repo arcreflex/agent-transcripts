@@ -224,7 +224,7 @@ const convertCmd = command({
       const { transcripts } = await parseToTranscripts({ input, adapter });
       for (let i = 0; i < transcripts.length; i++) {
         if (i > 0) console.log();
-        console.log(renderTranscript(transcripts[i], head));
+        console.log(renderTranscript(transcripts[i], { head }));
       }
     }
   },

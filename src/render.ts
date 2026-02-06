@@ -3,16 +3,8 @@
  */
 
 import type { Transcript, Message, ToolCall } from "./types.ts";
-import {
-  buildTree,
-  findLatestLeaf,
-  tracePath,
-  getFirstLine,
-} from "./utils/tree.ts";
+import { walkTranscriptTree } from "./utils/tree.ts";
 
-/**
- * Format a single tool call.
- */
 function formatToolCall(call: ToolCall): string {
   if (call.summary) {
     return `${call.name} \`${call.summary}\``;
@@ -20,9 +12,6 @@ function formatToolCall(call: ToolCall): string {
   return call.name;
 }
 
-/**
- * Format tool calls group.
- */
 function formatToolCalls(calls: ToolCall[]): string {
   if (calls.length === 1) {
     return `**Tool**: ${formatToolCall(calls[0])}`;
@@ -30,9 +19,6 @@ function formatToolCalls(calls: ToolCall[]): string {
   return `**Tools**:\n${calls.map((c) => `- ${formatToolCall(c)}`).join("\n")}`;
 }
 
-/**
- * Render a message to markdown.
- */
 function renderMessage(msg: Message): string {
   switch (msg.type) {
     case "user":
@@ -76,17 +62,11 @@ export interface RenderTranscriptOptions {
   sourcePath?: string; // absolute source path for front matter provenance
 }
 
-/**
- * Render transcript to markdown with branch awareness.
- */
 export function renderTranscript(
   transcript: Transcript,
-  options: RenderTranscriptOptions | string = {},
+  options: RenderTranscriptOptions = {},
 ): string {
-  // Support legacy signature: renderTranscript(transcript, head?: string)
-  const opts: RenderTranscriptOptions =
-    typeof options === "string" ? { head: options } : options;
-  const { head, sourcePath } = opts;
+  const { head, sourcePath } = options;
 
   const lines: string[] = [];
 
@@ -116,76 +96,33 @@ export function renderTranscript(
   lines.push("");
   lines.push("---");
 
-  // Handle empty transcripts
-  if (transcript.messages.length === 0) {
-    return lines.join("\n");
-  }
+  for (const event of walkTranscriptTree(transcript, { head })) {
+    switch (event.type) {
+      case "empty":
+        break;
 
-  // Build tree
-  const { bySourceRef, children, parents, roots } = buildTree(
-    transcript.messages,
-  );
-
-  // Determine target (head or latest leaf)
-  let target: string | undefined;
-  if (head) {
-    if (!bySourceRef.has(head)) {
-      lines.push("");
-      lines.push(`**Error**: Message ID \`${head}\` not found`);
-      return lines.join("\n");
-    }
-    target = head;
-  } else {
-    target = findLatestLeaf(bySourceRef, children);
-  }
-
-  if (!target) {
-    // Fallback: just render all messages in order (shouldn't happen normally)
-    for (const msg of transcript.messages) {
-      const rendered = renderMessage(msg);
-      if (rendered) {
+      case "head_not_found":
         lines.push("");
-        lines.push(rendered);
-      }
-    }
-    return lines.join("\n");
-  }
+        lines.push(`**Error**: Message ID \`${event.head}\` not found`);
+        break;
 
-  // Trace path from root to target
-  const path = tracePath(target, parents);
-  const pathSet = new Set(path);
-
-  // Render messages along the path
-  for (const sourceRef of path) {
-    const msgs = bySourceRef.get(sourceRef);
-    if (!msgs) continue;
-
-    // Render all messages from this source
-    for (const msg of msgs) {
-      const rendered = renderMessage(msg);
-      if (rendered) {
-        lines.push("");
-        lines.push(rendered);
-      }
-    }
-
-    // Check for other branches at this point (only if not using explicit --head)
-    if (!head) {
-      const childSet = children.get(sourceRef);
-      if (childSet && childSet.size > 1) {
-        const otherBranches = [...childSet].filter((c) => !pathSet.has(c));
-        if (otherBranches.length > 0) {
-          lines.push("");
-          lines.push("> **Other branches**:");
-          for (const branchRef of otherBranches) {
-            const branchMsgs = bySourceRef.get(branchRef);
-            if (branchMsgs && branchMsgs.length > 0) {
-              const firstLine = getFirstLine(branchMsgs[0]);
-              lines.push(`> - \`${branchRef}\` "${firstLine}"`);
-            }
+      case "messages":
+        for (const msg of event.messages) {
+          const rendered = renderMessage(msg);
+          if (rendered) {
+            lines.push("");
+            lines.push(rendered);
           }
         }
-      }
+        break;
+
+      case "branch_note":
+        lines.push("");
+        lines.push("> **Other branches**:");
+        for (const branch of event.branches) {
+          lines.push(`> - \`${branch.sourceRef}\` "${branch.firstLine}"`);
+        }
+        break;
     }
   }
 

@@ -12,7 +12,7 @@ import {
   computeContentHash,
   type ArchiveEntry,
 } from "../src/archive.ts";
-import type { Adapter, Transcript } from "../src/types.ts";
+import type { Adapter } from "../src/types.ts";
 import { claudeCodeAdapter } from "../src/adapters/claude-code.ts";
 
 const fixturesDir = join(import.meta.dir, "fixtures/claude");

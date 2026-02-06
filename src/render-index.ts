@@ -8,6 +8,14 @@
  */
 
 import { escapeHtml } from "./utils/html.ts";
+import { truncate } from "./utils/text.ts";
+import {
+  THEME_VARS,
+  BASE_RESET,
+  SCROLLBAR_STYLES,
+  accentBar,
+  responsiveBase,
+} from "./utils/theme.ts";
 
 // ============================================================================
 // Styles - Terminal Chronicle Theme (Index)
@@ -17,98 +25,35 @@ const INDEX_STYLES = `
 /* ============================================================================
    Agent Transcripts Index - Terminal Chronicle Theme
    ============================================================================ */
-
-@import url('https://fonts.googleapis.com/css2?family=Berkeley+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap');
+${THEME_VARS}
 
 :root {
-  /* Typography */
-  --font-mono: 'Berkeley Mono', 'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', Consolas, monospace;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-
-  /* Dark theme */
-  --bg: #0d0d0d;
-  --bg-elevated: #141414;
-  --bg-surface: #1a1a1a;
-  --fg: #e4e4e4;
-  --fg-secondary: #a3a3a3;
-  --muted: #666666;
-  --border: #2a2a2a;
-  --border-subtle: #222222;
-
-  /* Accent */
-  --accent: #f59e0b;
-  --accent-dim: #b45309;
-  --accent-glow: rgba(245, 158, 11, 0.15);
-
-  /* Cards */
+  /* Index-specific tokens */
   --card-bg: var(--bg-elevated);
   --card-hover: var(--bg-surface);
   --card-border: var(--border);
   --card-border-hover: #3a3a3a;
 
-  /* Links */
-  --link: #60a5fa;
-  --link-hover: #93c5fd;
-
-  /* Input */
   --input-bg: var(--bg-elevated);
   --input-border: var(--border);
   --input-focus: var(--accent);
-
-  /* Effects */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #fafafa;
-    --bg-elevated: #ffffff;
-    --bg-surface: #f5f5f5;
-    --fg: #171717;
-    --fg-secondary: #525252;
-    --muted: #a3a3a3;
-    --border: #e5e5e5;
-    --border-subtle: #f0f0f0;
-
-    --accent: #d97706;
-    --accent-dim: #92400e;
-    --accent-glow: rgba(217, 119, 6, 0.1);
-
     --card-bg: var(--bg-elevated);
     --card-hover: var(--bg-surface);
     --card-border: var(--border);
     --card-border-hover: #d4d4d4;
 
-    --link: #2563eb;
-    --link-hover: #1d4ed8;
-
     --input-bg: var(--bg-elevated);
     --input-border: var(--border);
     --input-focus: var(--accent);
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 }
+${BASE_RESET}
 
-*, *::before, *::after { box-sizing: border-box; }
-
-html {
-  font-size: 15px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  font-family: var(--font-body);
-  background: var(--bg);
-  color: var(--fg);
-  line-height: 1.6;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-}
+body { line-height: 1.6; }
 
 .index-container {
   max-width: 54rem;
@@ -116,35 +61,7 @@ body {
   padding: 2.5rem 2rem 4rem;
   position: relative;
 }
-
-/* Subtle accent bar */
-.index-container::before {
-  content: '';
-  position: fixed;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--accent-dim) 15%,
-    var(--accent) 50%,
-    var(--accent-dim) 85%,
-    transparent 100%
-  );
-  opacity: 0.6;
-}
-
-a {
-  color: var(--link);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-a:hover {
-  color: var(--link-hover);
-}
+${accentBar("index-container")}
 
 /* ============================================================================
    Header
@@ -313,45 +230,10 @@ header h1::before {
   margin: 0;
 }
 
-/* ============================================================================
-   Scrollbar
-   ============================================================================ */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--border-subtle);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--muted);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--fg-secondary);
-}
-
-/* ============================================================================
-   Responsive
-   ============================================================================ */
+${SCROLLBAR_STYLES}
+${responsiveBase("index-container")}
 
 @media (max-width: 640px) {
-  html {
-    font-size: 14px;
-  }
-
-  .index-container {
-    padding: 1.5rem 1rem 3rem;
-  }
-
-  .index-container::before {
-    display: none;
-  }
-
   header h1 {
     font-size: 1.125rem;
   }
@@ -409,26 +291,6 @@ const INDEX_SCRIPT = `
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function truncate(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen).trim() + "...";
-}
-
-function formatDate(isoString: string): string {
-  try {
-    const date = new Date(isoString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return isoString;
-  }
-}
 
 /**
  * Format a date range compactly, e.g., "1/25 4:00-6:30"

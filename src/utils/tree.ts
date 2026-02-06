@@ -2,7 +2,7 @@
  * Tree/branch navigation utilities for transcript messages.
  */
 
-import type { Message } from "../types.ts";
+import type { Transcript, Message } from "../types.ts";
 
 export interface MessageTree {
   bySourceRef: Map<string, Message[]>;
@@ -113,4 +113,88 @@ export function getFirstLine(msg: Message): string {
   return firstLine.length > maxLen
     ? firstLine.slice(0, maxLen) + "..."
     : firstLine;
+}
+
+// ============================================================================
+// Tree walk: yields events as it walks the primary branch of a transcript.
+// ============================================================================
+
+export type TreeEvent =
+  | { type: "messages"; messages: Message[] }
+  | { type: "branch_note"; branches: BranchInfo[] }
+  | { type: "head_not_found"; head: string }
+  | { type: "empty" };
+
+export interface BranchInfo {
+  sourceRef: string;
+  firstLine: string;
+}
+
+export interface WalkOptions {
+  head?: string;
+}
+
+/**
+ * Walk the primary branch of a transcript, yielding render events.
+ * Handles tree construction, target resolution, path tracing, and branch detection.
+ */
+export function* walkTranscriptTree(
+  transcript: Transcript,
+  options: WalkOptions = {},
+): Generator<TreeEvent> {
+  if (transcript.messages.length === 0) {
+    yield { type: "empty" };
+    return;
+  }
+
+  const { head } = options;
+  const { bySourceRef, children, parents } = buildTree(transcript.messages);
+
+  let target: string | undefined;
+  if (head) {
+    if (!bySourceRef.has(head)) {
+      yield { type: "head_not_found", head };
+      return;
+    }
+    target = head;
+  } else {
+    target = findLatestLeaf(bySourceRef, children);
+  }
+
+  if (!target) {
+    // Fallback: yield all messages in order
+    yield { type: "messages", messages: transcript.messages };
+    return;
+  }
+
+  const path = tracePath(target, parents);
+  const pathSet = new Set(path);
+
+  for (const sourceRef of path) {
+    const msgs = bySourceRef.get(sourceRef);
+    if (!msgs) continue;
+
+    yield { type: "messages", messages: msgs };
+
+    // Branch notes (only when not using explicit head)
+    if (!head) {
+      const childSet = children.get(sourceRef);
+      if (childSet && childSet.size > 1) {
+        const branches: BranchInfo[] = [];
+        for (const childRef of childSet) {
+          if (pathSet.has(childRef)) continue;
+          const branchMsgs = bySourceRef.get(childRef);
+          if (branchMsgs && branchMsgs.length > 0) {
+            branches.push({
+              sourceRef: childRef,
+              firstLine: getFirstLine(branchMsgs[0]),
+            });
+          }
+        }
+        if (branches.length > 0) {
+          yield { type: "branch_note", branches };
+        }
+      }
+    }
+  }
 }
