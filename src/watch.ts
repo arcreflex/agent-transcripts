@@ -2,12 +2,11 @@
  * Watch module: keep archive in sync with source directories.
  *
  * Uses fs.watch for change detection with periodic full scan as fallback.
- * Lockfile prevents concurrent watchers on the same archive.
+ * Multiple watchers can safely target the same archive — writes are atomic
+ * (tmp + rename) and archiving is idempotent.
  */
 
-import { watch, unlinkSync, type FSWatcher } from "fs";
-import { join } from "path";
-import { mkdir, writeFile, readFile } from "fs/promises";
+import { watch, type FSWatcher } from "fs";
 import { getAdapters } from "./adapters/index.ts";
 import {
   archiveAll,
@@ -21,63 +20,6 @@ export interface WatchOptions {
   onUpdate?: (result: ArchiveResult) => void;
   onError?: (error: Error) => void;
   quiet?: boolean;
-}
-
-function lockPath(archiveDir: string): string {
-  return join(archiveDir, "archive.lock");
-}
-
-async function acquireLock(archiveDir: string): Promise<boolean> {
-  await mkdir(archiveDir, { recursive: true });
-  const lock = lockPath(archiveDir);
-  try {
-    await writeFile(lock, String(process.pid), { flag: "wx" });
-    return true;
-  } catch (err: unknown) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "code" in err &&
-      err.code === "EEXIST"
-    ) {
-      // Lock file exists — check if the holding process is still alive
-      try {
-        const existing = await readFile(lock, "utf-8");
-        const pid = parseInt(existing, 10);
-        if (!isNaN(pid)) {
-          try {
-            process.kill(pid, 0);
-            return false; // Process is alive, lock is held
-          } catch {
-            // Process is dead, stale lock — reclaim
-          }
-        }
-        await writeFile(lock, String(process.pid), { flag: "w" });
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    throw err;
-  }
-}
-
-function releaseLock(archiveDir: string): void {
-  try {
-    unlinkSync(lockPath(archiveDir));
-  } catch (err: unknown) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "code" in err &&
-      err.code === "ENOENT"
-    ) {
-      return;
-    }
-    console.error(
-      `Warning: failed to release lock: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
 }
 
 export class ArchiveWatcher {
@@ -101,13 +43,6 @@ export class ArchiveWatcher {
   }
 
   async start(): Promise<void> {
-    const locked = await acquireLock(this.archiveDir);
-    if (!locked) {
-      throw new Error(
-        `Another watcher is already running on ${this.archiveDir}`,
-      );
-    }
-
     // Initial scan
     await this.scan();
 
@@ -143,8 +78,6 @@ export class ArchiveWatcher {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
-
-    releaseLock(this.archiveDir);
   }
 
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
