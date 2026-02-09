@@ -6,6 +6,7 @@
 
 import { Glob } from "bun";
 import { basename, join, relative } from "path";
+import { homedir } from "os";
 import { stat } from "fs/promises";
 import type {
   Adapter,
@@ -816,6 +817,7 @@ async function discoverByGlob(source: string): Promise<DiscoveredSession[]> {
 export const claudeCodeAdapter: Adapter = {
   name: "claude-code",
   version: "claude-code:1",
+  defaultSource: process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"),
 
   async discover(source: string): Promise<DiscoveredSession[]> {
     // Try index-based discovery first, fall back to glob

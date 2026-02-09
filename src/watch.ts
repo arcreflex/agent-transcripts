@@ -7,7 +7,7 @@
  */
 
 import { watch, type FSWatcher } from "fs";
-import { getAdapters } from "./adapters/index.ts";
+import type { SourceSpec } from "./types.ts";
 import {
   archiveAll,
   DEFAULT_ARCHIVE_DIR,
@@ -23,7 +23,7 @@ export interface WatchOptions {
 }
 
 export class ArchiveWatcher {
-  private sourceDirs: string[];
+  private sources: SourceSpec[];
   private archiveDir: string;
   private pollIntervalMs: number;
   private onUpdate?: (result: ArchiveResult) => void;
@@ -33,8 +33,8 @@ export class ArchiveWatcher {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private scanning = false;
 
-  constructor(sourceDirs: string[], options: WatchOptions = {}) {
-    this.sourceDirs = sourceDirs;
+  constructor(sources: SourceSpec[], options: WatchOptions = {}) {
+    this.sources = sources;
     this.archiveDir = options.archiveDir ?? DEFAULT_ARCHIVE_DIR;
     this.pollIntervalMs = options.pollIntervalMs ?? 30_000;
     this.onUpdate = options.onUpdate;
@@ -46,19 +46,27 @@ export class ArchiveWatcher {
     // Initial scan
     await this.scan();
 
-    // Set up fs.watch on each source dir
-    for (const dir of this.sourceDirs) {
+    // Set up fs.watch on each unique source dir
+    const watchedDirs = new Set<string>();
+    for (const spec of this.sources) {
+      if (watchedDirs.has(spec.source)) continue;
+      watchedDirs.add(spec.source);
+
       try {
-        const watcher = watch(dir, { recursive: true }, (_event, filename) => {
-          if (filename && filename.endsWith(".jsonl")) {
-            this.debouncedScan();
-          }
-        });
+        const watcher = watch(
+          spec.source,
+          { recursive: true },
+          (_event, filename) => {
+            if (filename && filename.endsWith(".jsonl")) {
+              this.debouncedScan();
+            }
+          },
+        );
         this.watchers.push(watcher);
       } catch (err) {
         if (!this.quiet) {
           console.error(
-            `Warning: could not watch ${dir}: ${err instanceof Error ? err.message : String(err)}`,
+            `Warning: could not watch ${spec.source}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
@@ -92,11 +100,13 @@ export class ArchiveWatcher {
     this.scanning = true;
 
     try {
-      const adapters = getAdapters();
-      for (const dir of this.sourceDirs) {
-        const result = await archiveAll(this.archiveDir, dir, adapters, {
-          quiet: this.quiet,
-        });
+      for (const spec of this.sources) {
+        const result = await archiveAll(
+          this.archiveDir,
+          spec.source,
+          [spec.adapter],
+          { quiet: this.quiet },
+        );
         if (result.updated.length > 0 || result.errors.length > 0) {
           this.onUpdate?.(result);
         }

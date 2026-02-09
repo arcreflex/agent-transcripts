@@ -19,8 +19,9 @@ import { convertToDirectory } from "./convert.ts";
 import { generateTitles } from "./title.ts";
 import { serve } from "./serve.ts";
 import { archiveAll, DEFAULT_ARCHIVE_DIR } from "./archive.ts";
-import { getAdapters } from "./adapters/index.ts";
+import { getAdapter, getDefaultSources } from "./adapters/index.ts";
 import { ArchiveWatcher } from "./watch.ts";
+import type { SourceSpec } from "./types.ts";
 
 // Shared options
 const inputArg = positional({
@@ -55,16 +56,52 @@ const archiveDirOpt = option({
   description: `Archive directory (default: ${DEFAULT_ARCHIVE_DIR})`,
 });
 
+/**
+ * Resolve source specs from CLI args.
+ * - No source: use adapter defaults
+ * - Source + adapter: explicit pair
+ * - Source without adapter: error
+ */
+function resolveSourceSpecs(
+  source: string | undefined,
+  adapterName: string | undefined,
+): SourceSpec[] {
+  if (!source) {
+    const defaults = getDefaultSources();
+    if (defaults.length === 0) {
+      console.error("Error: no adapters have a default source directory.");
+      process.exit(1);
+    }
+    return defaults;
+  }
+
+  if (!adapterName) {
+    console.error(
+      "Error: --adapter is required when specifying a source directory.",
+    );
+    process.exit(1);
+  }
+
+  const adapter = getAdapter(adapterName);
+  if (!adapter) {
+    console.error(`Error: unknown adapter "${adapterName}".`);
+    process.exit(1);
+  }
+
+  return [{ adapter, source }];
+}
+
 // Archive subcommand
 const archiveCmd = command({
   name: "archive",
   description: "Archive session files from source directory",
   args: {
     source: positional({
-      type: string,
+      type: optional(string),
       displayName: "source",
-      description: "Source directory to scan for session files",
+      description: "Source directory to scan (omit to use adapter defaults)",
     }),
+    adapter: adapterOpt,
     archiveDir: archiveDirOpt,
     quiet: flag({
       long: "quiet",
@@ -72,13 +109,26 @@ const archiveCmd = command({
       description: "Suppress progress output",
     }),
   },
-  async handler({ source, archiveDir, quiet }) {
+  async handler({ source, adapter: adapterName, archiveDir, quiet }) {
     const dir = archiveDir ?? DEFAULT_ARCHIVE_DIR;
-    const result = await archiveAll(dir, source, getAdapters(), { quiet });
+    const specs = resolveSourceSpecs(source, adapterName);
+
+    let totalUpdated = 0;
+    let totalCurrent = 0;
+    let totalErrors = 0;
+
+    for (const spec of specs) {
+      const result = await archiveAll(dir, spec.source, [spec.adapter], {
+        quiet,
+      });
+      totalUpdated += result.updated.length;
+      totalCurrent += result.current.length;
+      totalErrors += result.errors.length;
+    }
 
     if (!quiet) {
       console.error(
-        `\nArchive complete: ${result.updated.length} updated, ${result.current.length} current, ${result.errors.length} errors`,
+        `\nArchive complete: ${totalUpdated} updated, ${totalCurrent} current, ${totalErrors} errors`,
       );
     }
   },
@@ -143,10 +193,11 @@ const watchCmd = command({
   description: "Watch source directories and keep archive updated",
   args: {
     source: positional({
-      type: string,
+      type: optional(string),
       displayName: "source",
-      description: "Source directory to watch for session files",
+      description: "Source directory to watch (omit to use adapter defaults)",
     }),
+    adapter: adapterOpt,
     archiveDir: archiveDirOpt,
     pollInterval: option({
       type: optional(number),
@@ -159,8 +210,16 @@ const watchCmd = command({
       description: "Suppress progress output",
     }),
   },
-  async handler({ source, archiveDir, pollInterval, quiet }) {
-    const watcher = new ArchiveWatcher([source], {
+  async handler({
+    source,
+    adapter: adapterName,
+    archiveDir,
+    pollInterval,
+    quiet,
+  }) {
+    const specs = resolveSourceSpecs(source, adapterName);
+
+    const watcher = new ArchiveWatcher(specs, {
       archiveDir: archiveDir ?? undefined,
       pollIntervalMs: pollInterval ?? undefined,
       quiet,
@@ -174,8 +233,9 @@ const watchCmd = command({
       },
     });
 
+    const dirs = [...new Set(specs.map((s) => s.source))].join(", ");
     if (!quiet) {
-      console.error(`Watching ${source}...`);
+      console.error(`Watching ${dirs}...`);
     }
 
     await watcher.start();

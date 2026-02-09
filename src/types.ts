@@ -91,8 +91,16 @@ export interface Adapter {
   name: string;
   /** Versioned identifier for cache invalidation (e.g. "claude-code:1") */
   version: string;
+  /** Default source directory for auto-discovery (if the adapter has one) */
+  defaultSource?: string;
   /** Discover session files in the given directory */
   discover(source: string): Promise<DiscoveredSession[]>;
   /** Parse source content into one or more transcripts (split by conversation) */
   parse(content: string, sourcePath: string): Transcript[];
+}
+
+/** An adapter paired with its source directory. */
+export interface SourceSpec {
+  adapter: Adapter;
+  source: string;
 }

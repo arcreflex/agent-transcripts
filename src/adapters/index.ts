@@ -2,7 +2,7 @@
  * Adapter registry with path-based detection.
  */
 
-import type { Adapter } from "../types.ts";
+import type { Adapter, SourceSpec } from "../types.ts";
 import { claudeCodeAdapter } from "./claude-code.ts";
 
 const adapters: Record<string, Adapter> = {
@@ -39,8 +39,10 @@ export function listAdapters(): string[] {
 }
 
 /**
- * Get all registered adapters.
+ * Get default source specs from adapters that define a defaultSource.
  */
-export function getAdapters(): Adapter[] {
-  return Object.values(adapters);
+export function getDefaultSources(): SourceSpec[] {
+  return Object.values(adapters)
+    .filter((a): a is Adapter & { defaultSource: string } => !!a.defaultSource)
+    .map((a) => ({ adapter: a, source: a.defaultSource }));
 }

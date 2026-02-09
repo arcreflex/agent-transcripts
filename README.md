@@ -35,7 +35,9 @@ src/
 test/
   fixtures/       # Snapshot test inputs/outputs
   snapshots.test.ts
+  adapters.test.ts
   archive.test.ts
+  watch.test.ts
   tree.test.ts
   naming.test.ts
   summary.test.ts
@@ -57,8 +59,9 @@ agent-transcripts convert <file>              # Parse and render to stdout
 agent-transcripts convert <file> -o <dir>     # Parse and render to directory
 
 # Archive management
-agent-transcripts archive <source>            # Archive sessions from source dir
-agent-transcripts archive <source> --archive-dir ~/my-archive
+agent-transcripts archive                     # Auto-discover from adapter defaults (~/.claude)
+agent-transcripts archive /path --adapter claude-code  # Explicit source + adapter
+agent-transcripts archive --archive-dir ~/my-archive   # Custom archive location
 
 # Serving
 agent-transcripts serve                       # Serve from default archive
@@ -66,8 +69,9 @@ agent-transcripts serve --archive-dir <dir>   # Serve from custom archive
 agent-transcripts serve -p 8080               # Custom port
 
 # Watching
-agent-transcripts watch <source>              # Keep archive updated continuously
-agent-transcripts watch <source> --poll-interval 60000
+agent-transcripts watch                       # Auto-discover from adapter defaults
+agent-transcripts watch /path --adapter claude-code    # Explicit source + adapter
+agent-transcripts watch --poll-interval 60000
 
 # Title generation
 agent-transcripts title                       # Generate titles for archive entries
@@ -98,10 +102,10 @@ HTML (rendered on demand, in-memory LRU)
 
 ### Archive
 
-The archive is the central data store at `~/.local/share/agent-transcripts/archive/`:
+The archive is the central data store at `$XDG_DATA_HOME/agent-transcripts/archive/` (defaults to `~/.local/share/agent-transcripts/archive/`):
 
 ```
-~/.local/share/agent-transcripts/archive/
+$XDG_DATA_HOME/agent-transcripts/archive/
   {sessionId}.json  →  ArchiveEntry
 ```
 

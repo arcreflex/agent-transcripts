@@ -12,8 +12,8 @@ import type { Adapter, DiscoveredSession, Transcript } from "./types.ts";
 import { extractSessionId } from "./utils/naming.ts";
 
 export const DEFAULT_ARCHIVE_DIR = join(
-  homedir(),
-  ".local/share/agent-transcripts/archive",
+  process.env.XDG_DATA_HOME || join(homedir(), ".local/share"),
+  "agent-transcripts/archive",
 );
 
 const ARCHIVE_SCHEMA_VERSION = 1;
