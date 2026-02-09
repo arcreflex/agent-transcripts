@@ -62,6 +62,11 @@ export class ArchiveWatcher {
             }
           },
         );
+        watcher.on("error", (err) => {
+          if (!this.quiet) {
+            console.error(`Watch error on ${spec.source}: ${err.message}`);
+          }
+        });
         this.watchers.push(watcher);
       } catch (err) {
         if (!this.quiet) {
