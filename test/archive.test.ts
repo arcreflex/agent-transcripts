@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { join } from "path";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, readdir, rm, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import {
   archiveSession,
@@ -174,6 +174,49 @@ describe("archiveSession", () => {
     // Verify persisted
     const loaded = await loadEntry(tmpDir, first.entry.sessionId);
     expect(loaded?.title).toBe("New harness title");
+  });
+
+  it("writes .md alongside .json", async () => {
+    const fixturePath = join(fixturesDir, "basic-conversation.input.jsonl");
+    const session = {
+      path: fixturePath,
+      relativePath: "basic-conversation.input.jsonl",
+      mtime: Date.now(),
+    };
+
+    const { entry } = await archiveSession(tmpDir, session, claudeCodeAdapter);
+
+    const mdPath = join(tmpDir, `${entry.sessionId}.md`);
+    const md = await Bun.file(mdPath).text();
+    expect(md).toContain("# Transcript");
+    expect(md).toContain(fixturePath);
+  });
+
+  it("backfills .md when json is fresh but .md is missing", async () => {
+    const fixturePath = join(fixturesDir, "basic-conversation.input.jsonl");
+    const session = {
+      path: fixturePath,
+      relativePath: "basic-conversation.input.jsonl",
+      mtime: Date.now(),
+    };
+
+    // Archive once (creates both .json and .md)
+    const { entry } = await archiveSession(tmpDir, session, claudeCodeAdapter);
+
+    // Delete the .md to simulate a pre-markdown archive
+    const mdPath = join(tmpDir, `${entry.sessionId}.md`);
+    await unlink(mdPath);
+
+    // Re-archive — json is fresh, but .md should be backfilled
+    const { updated } = await archiveSession(
+      tmpDir,
+      session,
+      claudeCodeAdapter,
+    );
+    expect(updated).toBe(false);
+
+    const md = await Bun.file(mdPath).text();
+    expect(md).toContain("# Transcript");
   });
 
   it("preserves existing title when re-archiving", async () => {

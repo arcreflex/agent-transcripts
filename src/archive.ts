@@ -10,6 +10,7 @@ import { homedir } from "os";
 import { mkdir, readdir, rename, unlink } from "fs/promises";
 import type { Adapter, DiscoveredSession, Transcript } from "./types.ts";
 import { extractSessionId } from "./utils/naming.ts";
+import { renderTranscript } from "./render.ts";
 
 export const DEFAULT_ARCHIVE_DIR = join(
   process.env.XDG_DATA_HOME || join(homedir(), ".local/share"),
@@ -119,6 +120,35 @@ export async function saveEntry(
   }
 }
 
+function renderEntryMarkdown(entry: ArchiveEntry): string {
+  return entry.transcripts
+    .map((t, i) =>
+      renderTranscript(t, {
+        sourcePath: i === 0 ? entry.sourcePath : undefined,
+      }),
+    )
+    .join("\n\n---\n\n");
+}
+
+async function saveMarkdown(
+  archiveDir: string,
+  entry: ArchiveEntry,
+): Promise<void> {
+  const filePath = join(archiveDir, `${entry.sessionId}.md`);
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const content = renderEntryMarkdown(entry);
+
+  await Bun.write(tmpPath, content);
+  try {
+    await rename(tmpPath, filePath);
+  } catch (err) {
+    try {
+      await unlink(tmpPath);
+    } catch {}
+    throw err;
+  }
+}
+
 export function isFresh(
   entry: ArchiveEntry,
   sourceHash: string,
@@ -146,8 +176,16 @@ export async function archiveSession(
     if (session.summary && existing.title !== session.summary) {
       existing.title = session.summary;
       await saveEntry(archiveDir, existing);
+      await saveMarkdown(archiveDir, existing);
       return { entry: existing, updated: true };
     }
+
+    // Backfill .md if missing (upgrade path for pre-markdown archives)
+    const mdPath = join(archiveDir, `${sessionId}.md`);
+    if (!(await Bun.file(mdPath).exists())) {
+      await saveMarkdown(archiveDir, existing);
+    }
+
     return { entry: existing, updated: false };
   }
 
@@ -166,6 +204,7 @@ export async function archiveSession(
   };
 
   await saveEntry(archiveDir, entry);
+  await saveMarkdown(archiveDir, entry);
   return { entry, updated: true };
 }
 
