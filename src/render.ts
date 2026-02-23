@@ -60,13 +60,14 @@ ${msg.thinking}
 export interface RenderTranscriptOptions {
   head?: string; // render branch ending at this message ID
   sourcePath?: string; // absolute source path for front matter provenance
+  title?: string; // override the "# Transcript" heading
 }
 
 export function renderTranscript(
   transcript: Transcript,
   options: RenderTranscriptOptions = {},
 ): string {
-  const { head, sourcePath } = options;
+  const { head, sourcePath, title } = options;
 
   const lines: string[] = [];
 
@@ -79,7 +80,7 @@ export function renderTranscript(
   }
 
   // Header
-  lines.push("# Transcript");
+  lines.push(`# ${title || "Transcript"}`);
   lines.push("");
   lines.push(`**Source**: \`${transcript.source.file}\``);
   lines.push(`**Adapter**: ${transcript.source.adapter}`);
