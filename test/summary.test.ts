@@ -12,6 +12,12 @@ describe("extractToolSummary", () => {
     it("returns empty for missing file_path", () => {
       expect(extractToolSummary("Read", {})).toBe("");
     });
+
+    it("returns path (pi-coding-agent style)", () => {
+      expect(extractToolSummary("Read", { path: "src/index.ts" })).toBe(
+        "src/index.ts",
+      );
+    });
   });
 
   describe("Write", () => {

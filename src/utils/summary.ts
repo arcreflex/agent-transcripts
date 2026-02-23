@@ -7,9 +7,9 @@ import { truncate } from "./text.ts";
 type ToolInput = Record<string, unknown>;
 
 const extractors: Record<string, (input: ToolInput) => string> = {
-  Read: (i) => String(i.file_path || ""),
-  Write: (i) => String(i.file_path || ""),
-  Edit: (i) => String(i.file_path || ""),
+  Read: (i) => String(i.file_path || i.path || ""),
+  Write: (i) => String(i.file_path || i.path || ""),
+  Edit: (i) => String(i.file_path || i.path || ""),
   Bash: (i) => {
     if (i.description) return String(i.description);
     if (i.command) return truncate(String(i.command), 60);

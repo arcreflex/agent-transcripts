@@ -4,9 +4,11 @@
 
 import type { Adapter, SourceSpec } from "../types.ts";
 import { claudeCodeAdapter } from "./claude-code.ts";
+import { piCodingAgentAdapter } from "./pi-coding-agent.ts";
 
 const adapters: Record<string, Adapter> = {
   "claude-code": claudeCodeAdapter,
+  "pi-coding-agent": piCodingAgentAdapter,
 };
 
 /**
@@ -15,6 +17,8 @@ const adapters: Record<string, Adapter> = {
 const detectionRules: Array<{ pattern: RegExp; adapter: string }> = [
   // Match .claude/ or /claude/ in path
   { pattern: /[./]claude[/\\]/, adapter: "claude-code" },
+  // Match .pi/agent/sessions/ in path
+  { pattern: /[./]pi[/\\]agent[/\\]sessions[/\\]/, adapter: "pi-coding-agent" },
 ];
 
 /**
