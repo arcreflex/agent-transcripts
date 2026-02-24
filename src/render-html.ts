@@ -304,23 +304,25 @@ main {
   color: var(--fg);
 }
 
-/* Shiki syntax highlighting - dual theme support */
-.content .shiki,
-.thinking .shiki {
+/* Markdown-highlighted content (Shiki renders as <pre>, but this is prose) */
+.markdown-body pre {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.markdown-body .shiki {
   background: transparent !important;
   border: none;
   padding: 0;
   margin: 0;
 }
 
-.content .shiki span,
-.thinking .shiki span {
+.markdown-body .shiki span {
   color: var(--shiki-light);
 }
 
 @media (prefers-color-scheme: dark) {
-  .content .shiki span,
-  .thinking .shiki span {
+  .markdown-body .shiki span {
     color: var(--shiki-dark);
   }
 }
@@ -755,7 +757,7 @@ async function renderMessage(
   </div>
   ${msg.rawJson ? renderRawToggle() : ""}
   <div class="rendered-view">
-    <div class="content">${await contentToHtml(msg.content)}</div>
+    <div class="content markdown-body">${await contentToHtml(msg.content)}</div>
   </div>
   ${msg.rawJson ? `<div class="raw-view">${rawJson}</div>` : ""}
 </div>`;
@@ -767,13 +769,13 @@ async function renderMessage(
         rendered += `
   <details>
     <summary>thinking...</summary>
-    <div class="thinking">${await contentToHtml(msg.thinking)}</div>
+    <div class="thinking markdown-body">${await contentToHtml(msg.thinking)}</div>
   </details>`;
       }
 
       if (msg.content.trim()) {
         rendered += `
-  <div class="content">${await contentToHtml(msg.content)}</div>`;
+  <div class="content markdown-body">${await contentToHtml(msg.content)}</div>`;
       }
 
       const header = ctx.showAssistantHeader
