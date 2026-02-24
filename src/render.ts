@@ -6,10 +6,9 @@ import type { Transcript, Message, ToolCall } from "./types.ts";
 import { walkTranscriptTree } from "./utils/tree.ts";
 
 function formatToolCall(call: ToolCall): string {
-  if (call.summary) {
-    return `${call.name} \`${call.summary}\``;
-  }
-  return call.name;
+  const label = call.summary ? `${call.name} \`${call.summary}\`` : call.name;
+  const ref = call.id ? ` <!-- tool:${call.id} -->` : "";
+  return `${label}${ref}`;
 }
 
 function formatToolCalls(calls: ToolCall[]): string {

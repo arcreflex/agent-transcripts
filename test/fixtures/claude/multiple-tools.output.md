@@ -10,6 +10,6 @@
 Check the files
 
 **Tools**:
-- Read `/src/main.ts`
-- Glob `**/*.test.ts`
-- Bash `List files`
+- Read `/src/main.ts` <!-- tool:tool-1 -->
+- Glob `**/*.test.ts` <!-- tool:tool-2 -->
+- Bash `List files` <!-- tool:tool-3 -->

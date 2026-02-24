@@ -13,7 +13,7 @@ Read the package.json file
 
 Let me read that file for you.
 
-**Tool**: Read `package.json`
+**Tool**: Read `package.json` <!-- tool:call_001 -->
 
 ## Assistant
 

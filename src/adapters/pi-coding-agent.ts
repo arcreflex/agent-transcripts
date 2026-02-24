@@ -476,6 +476,7 @@ function transformConversation(
           const calls: ToolCall[] = piToolCalls.map((tc) => {
             const result = toolResults.get(tc.id);
             return {
+              id: tc.id,
               name: tc.name,
               summary: extractToolSummary(tc.name, tc.arguments || {}),
               input: tc.arguments,

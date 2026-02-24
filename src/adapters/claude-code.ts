@@ -495,6 +495,7 @@ function extractToolCalls(
       const result = toolResults.get(b.id);
       return [
         {
+          id: b.id,
           name: b.name,
           summary: extractToolSummary(b.name, b.input || {}),
           input: b.input,

@@ -13,7 +13,7 @@ Read the config file
 
 I'll read the config file for you.
 
-**Tool**: Read `/project/config.json`
+**Tool**: Read `/project/config.json` <!-- tool:tool-1 -->
 
 ## Assistant
 

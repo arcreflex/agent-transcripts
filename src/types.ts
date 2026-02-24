@@ -60,6 +60,7 @@ export interface ToolCallGroup extends BaseMessage {
 }
 
 export interface ToolCall {
+  id?: string;
   name: string;
   summary: string;
   input?: Record<string, unknown>;
