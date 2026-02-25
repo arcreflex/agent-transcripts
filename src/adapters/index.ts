@@ -17,8 +17,11 @@ const adapters: Record<string, Adapter> = {
 const detectionRules: Array<{ pattern: RegExp; adapter: string }> = [
   // Match .claude/ or /claude/ in path
   { pattern: /[./]claude[/\\]/, adapter: "claude-code" },
-  // Match .pi/agent/sessions/ in path
-  { pattern: /[./]pi[/\\]agent[/\\]sessions[/\\]/, adapter: "pi-coding-agent" },
+  // Match .pi/sessions/ or pi-coding-agent/sessions/ in path
+  {
+    pattern: /[./]pi(?:-coding-agent)?[/\\]sessions[/\\]/,
+    adapter: "pi-coding-agent",
+  },
 ];
 
 /**

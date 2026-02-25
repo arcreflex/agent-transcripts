@@ -1,7 +1,7 @@
 /**
  * pi-coding-agent JSONL adapter.
  *
- * Parses session files from ~/.pi/agent/sessions/{encoded-cwd}/{timestamp}_{uuid}.jsonl
+ * Parses session files from ~/.pi/sessions/{encoded-cwd}/{timestamp}_{uuid}.jsonl
  *
  * Session format: tree-structured JSONL with id/parentId linking (version 3).
  * See: https://github.com/badlogic/pi-mono — pi-coding-agent session docs.
@@ -536,7 +536,10 @@ function transformConversation(
 export const piCodingAgentAdapter: Adapter = {
   name: "pi-coding-agent",
   version: "pi-coding-agent:1",
-  defaultSource: join(homedir(), ".pi", "agent", "sessions"),
+  defaultSource: join(
+    process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi"),
+    "sessions",
+  ),
 
   async discover(source: string): Promise<DiscoveredSession[]> {
     const sessions: DiscoveredSession[] = [];

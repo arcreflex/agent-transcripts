@@ -24,7 +24,8 @@ describe("getDefaultSources", () => {
     const pi = specs.find((s) => s.adapter.name === "pi-coding-agent");
     expect(pi).toBeDefined();
     expect(pi?.adapter).toBe(piCodingAgentAdapter);
-    expect(pi?.source).toMatch(/\.pi[/\\]agent[/\\]sessions$/);
+    expect(pi?.source).toMatch(/sessions$/);
+    expect(pi?.source).toBe(piCodingAgentAdapter.defaultSource);
   });
 
   it("only includes adapters with defaultSource set", () => {
@@ -52,11 +53,9 @@ describe("detectAdapter", () => {
     );
   });
 
-  it("detects pi-coding-agent from .pi/agent/sessions/ paths", () => {
+  it("detects pi-coding-agent from .pi/sessions/ paths", () => {
     expect(
-      detectAdapter(
-        "/home/user/.pi/agent/sessions/--project--/12345_abc.jsonl",
-      ),
+      detectAdapter("/home/user/.pi/sessions/--project--/12345_abc.jsonl"),
     ).toBe("pi-coding-agent");
   });
 
